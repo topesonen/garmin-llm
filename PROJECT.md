@@ -1,0 +1,193 @@
+# Local Text-to-SQL Assistant: Project Brief
+
+Shared brief for Topias and the coding agent (Claude Code). Read this file, `docs/schema.md` and `docs/data_notes.md` before starting any work.
+
+Two phases:
+- **Phase A (now):** a local assistant on Ollama that answers natural-language questions about personal Garmin training data by generating and running SQL against DuckDB, with an execution-based evaluation harness. Runs on a laptop with no usable GPU.
+- **Phase B (later):** run the same assistant against vLLM on a rented GPU and benchmark serving cost, latency and throughput under concurrent load.
+
+The application talks to the model only through the OpenAI-compatible API, so switching from Ollama to vLLM is a config change, not a rewrite.
+
+## Current status (2026-10-03)
+
+Done:
+- Data source: Garmin Connect activities CSV export (`Activities.csv`), stored in `data/raw/` (gitignored).
+- `src/ingest_csv.py` loads it into `data/warehouse/garmin.duckdb` as `raw_activities` (text, Title column removed) and `activities` (typed, cleaned).
+- `docs/schema.md`: column-level schema with units, written to double as the model's schema context.
+- `docs/data_notes.md`: export quirks, how each was handled, unit checks done from the data, and notes for eval questions.
+- `.gitignore` covering raw data, private config, the DuckDB file, CSVs and real-data eval files.
+
+Open:
+- Topias to confirm whether the CSV holds the full Garmin history or only the activities loaded in the list at export time.
+- Manual validation of 5 activities against Garmin Connect (A1, last step).
+- Everything from A0 and A2 onwards.
+
+Next session, in order: A0 (environment check) and the A1 manual validation can run in parallel; then A2.
+
+## Why this project
+
+- Evidence for AI engineer / applied ML roles built on a data engineering background: LLM over structured data ("chat with the data warehouse").
+- Clean evaluation: every question has a gold SQL query, and correctness is judged by comparing result sets, not by an LLM judge.
+- The local AI story: private health-adjacent data never leaves the machine at inference time, no API costs, ordinary hardware.
+- Phase B connects to the MSc thesis theme (cost-performance tradeoffs). The README may point out this connection; it must not describe the thesis as being about inference or text-to-SQL.
+
+## Hardware (Phase A)
+
+| Component | Value |
+|---|---|
+| Machine | Lenovo ThinkPad T490 |
+| OS | Ubuntu 24.04.4 LTS |
+| CPU | Intel i7-8665U, 4 cores / 8 threads |
+| RAM | 32 GB |
+| GPU | NVIDIA GeForce MX250 (low VRAM) + Intel UHD 620 |
+
+Implications:
+- Treat this as CPU inference. Check in A0 whether Ollama uses the MX250 and whether partial offload helps or hurts; if it hurts or fails, force CPU and document it.
+- Models in the 1B to 4B range are the default. 7B to 8B fit in RAM but expect slow generation; use them for comparison runs.
+- Eval runs are slow. Scripts must be resumable and cache every model output.
+- Measured tokens/s on this laptop is a result to report, not a number to assume.
+
+## Open decisions (Topias decides, agent does not)
+
+| Decision | Options | Status |
+|---|---|---|
+| Generator models (2 to 3) | Small models from the Ollama library, including at least one code/SQL-oriented model if available, plus one 7B/8B for comparison. Verify availability and licence at decision time. | TBD |
+| Exclude accidental short activities in eval questions | Yes / no, and threshold | TBD |
+| Full Garmin account export later (FIT files, sleep, VO2max) | See `GARMIN_SETUP.md`. Not needed for v1. | Deferred |
+| Interface | CLI only, or a minimal web UI (e.g. Streamlit or Gradio) | TBD |
+| Repo name and visibility | | TBD |
+
+## Stack
+
+- Python, pinned dependencies in `requirements.txt` (currently duckdb, pandas).
+- DuckDB as the warehouse (`data/warehouse/garmin.duckdb`).
+- Ollama for generation, accessed through the OpenAI Python client and the Ollama OpenAI-compatible endpoint. Check the current Ollama docs for supported endpoints before relying on them.
+
+## Pipeline
+
+1. Question in.
+2. Prompt = schema context from `docs/schema.md` + optional few-shot examples + question.
+3. Model returns one SQL query.
+4. Guardrails: read-only DuckDB connection, single SELECT statement only, only the `activities` table, query timeout, row limit.
+5. Execute; on error, optionally feed the error back to the model for one retry (an experiment, not the baseline).
+6. Return the result table and, optionally, a short natural-language answer generated from it.
+7. If the question cannot be answered from the schema, the model should say so instead of guessing.
+
+## Phase A steps
+
+### A0. Environment check
+Install Ollama, pull one small model, confirm GPU behaviour, record CPU-only vs offload tokens/s for one fixed prompt.
+Done when: `docs/environment.md` records versions, GPU behaviour and measured numbers.
+
+### A1. Data (mostly done)
+- [x] Ingest CSV into DuckDB (`src/ingest_csv.py`)
+- [x] Schema doc (`docs/schema.md`) and data notes (`docs/data_notes.md`)
+- [ ] Topias: confirm the CSV covers the full history
+- [ ] Topias: check 5 activities (a race, a long run, an interval session, a track or treadmill run, a non-running activity) against Garmin Connect: date and start time, distance, timer time, average HR, elevation gain, power if present. Record in `docs/validation.md`.
+Done when: `docs/validation.md` shows the check passed. Do not write eval questions before that.
+
+### A2. Baseline assistant
+Pipeline steps 1 to 4 and 6 with one model, zero-shot.
+Done when: one command answers a question and prints the SQL and the result.
+
+### A3. Evaluation set
+30 to 50 questions, each with a gold SQL query written or verified by Topias. Spread across difficulty: simple filters and aggregates, date logic (weekly/monthly volume, comparisons between periods), window functions, label-based questions using `workout_label`, and multi-step questions. Include 5 to 10 questions the schema cannot answer.
+Gold answers are computed by running the gold SQL on a frozen snapshot of the database, so expected results are never typed by hand.
+The agent may draft candidate questions and SQL from the schema; only Topias marks them verified.
+Done when: `eval/questions.jsonl` exists and every row is verified.
+
+### A4. Evaluation harness
+Metrics:
+- **Execution accuracy:** generated SQL returns the same result set as the gold SQL (order-insensitive unless the question requires ordering; numeric tolerance documented).
+- **Valid SQL rate:** share of queries that parse and run.
+- **Error categories:** wrong column/table, wrong date logic, wrong aggregation, wrong units, wrong label matching, other. Labelled manually for failures.
+- **Unanswerable handling:** share of unanswerable questions correctly declined.
+- **Performance:** time to first token, total latency, tokens/s per model.
+Done when: one command runs the full eval for one configuration, writes raw results, and resumes after interruption.
+
+### A5. Experiments
+Vary one thing at a time against the baseline: model, schema description detail, number of few-shot examples, error-feedback retry on/off.
+Done when: a results table compares configurations on all metrics, with raw results stored (aggregates only for real data, see privacy).
+
+### A6. Interface (optional)
+Minimal UI for demos.
+
+### A7. Synthetic data and public eval
+`scripts/make_synthetic.py` generates a fake `activities` table with the same schema and realistic distributions (including the quirks in `docs/data_notes.md`), plus a synthetic eval set, so the project runs for anyone without the real data.
+
+### A8. Write-up
+README: use case, architecture, guardrails, eval method, results, failure analysis, limitations, hardware.
+Done when: Topias has checked every number against `results/raw/`.
+
+## Phase B: vLLM serving benchmark (after Phase A)
+
+Run the assistant against vLLM on a rented GPU. Measure TTFT, inter-token latency, end-to-end latency (p50/p95/p99), output tokens/s, requests/s and cost per 1M output tokens across concurrency levels (e.g. 1, 4, 16, 64) and quantization settings (BF16, AWQ, GPTQ, FP8 where supported). Re-run the synthetic eval set on each setting to check execution accuracy does not degrade.
+
+Phase B decisions (model, GPU provider, GPU type, spend cap) are made by Topias before it starts. Never start a paid instance without Topias confirming in the session; terminate instances at the end of every session and log hours and cost in `costs.md`. Check the vLLM CLI and benchmarking tool against the docs for the installed version.
+
+## Privacy
+
+- `data/raw/`, `data/private/`, the real DuckDB file, CSVs and real-data eval files are gitignored and never committed.
+- The `Title` column is not loaded into the database. `workout_label` strips leading place names using `data/private/place_names.txt`; race names can still contain a city inside the event name, so label values are never published.
+- No latitude, longitude or location columns in any table.
+- Real-data results are published only as aggregate metrics. Query outputs, sample rows, label values and eval questions about real data stay private.
+- **Claude Code is a cloud model.** Anything it reads or prints goes to Anthropic. During development, the agent works against the schema and synthetic data; it does not open `data/raw/`, does not print real rows, and checks real-data logic with aggregate queries (counts, null rates, min/max) unless Topias explicitly asks otherwise in the session.
+
+## Repo layout
+
+```
+local-sql/
+  README.md
+  PROJECT.md
+  CLAUDE.md               points Claude Code to this file
+  GARMIN_SETUP.md         full account export, for later
+  requirements.txt
+  .gitignore
+  configs/                one YAML per experiment configuration
+  data/raw/               gitignored: Activities.csv
+  data/private/           gitignored: place_names.txt
+  data/warehouse/         gitignored real DB; synthetic DB may be committed
+  data/synthetic/         synthetic CSV/DB, committed
+  src/
+    ingest_csv.py         done
+    prompt.py
+    generate_sql.py
+    guardrails.py
+    app.py
+  eval/
+    questions.jsonl       private (real data)
+    questions_synthetic.jsonl
+    run_eval.py
+    score.py
+  scripts/make_synthetic.py
+  results/raw/
+  results/processed/
+  docs/
+    schema.md             done
+    data_notes.md         done
+    environment.md
+    validation.md
+  costs.md                Phase B only
+```
+
+## Rules for the agent
+
+- Never fabricate, estimate or fill in results. Every number in the README must trace to a file in `results/raw/`.
+- If a run fails or looks wrong, record and report it; do not silently rerun and drop it.
+- Ask before changing models, metrics, eval questions or the schema. If the schema changes, update `docs/schema.md` and `docs/data_notes.md` in the same change.
+- Follow the privacy section, including the Claude Code rule.
+- Cache all model calls keyed by configuration and input, so interrupted runs resume.
+- Record Ollama version, model name and tag/digest, and all config values in every result file.
+- Secrets in environment variables only, never in the repo.
+- No emojis in code or comments.
+- Update "Current status" and the session log at the end of each session.
+
+## Output for the CV (later, after results exist)
+
+One line describing what was built and measured, with real numbers from `results/processed/`. Written by Topias after the write-up, not before.
+
+## Session log
+
+| Date | Phase | What was done | Next step |
+|---|---|---|---|
+| 2026-10-03 | A1 | CSV export profiled; `ingest_csv.py`, `schema.md`, `data_notes.md`, `.gitignore` written; quirks found: Track Running distance in metres, pace/speed mixed in one column, place names in titles | Topias: confirm full history, run manual validation. Agent: A0 environment check |

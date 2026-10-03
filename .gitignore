@@ -1,0 +1,18 @@
+# Personal data: never committed
+data/raw/
+data/private/
+data/warehouse/*.duckdb
+data/warehouse/*.duckdb.wal
+*.csv
+!data/synthetic/*.csv
+
+# Eval questions and results about real data
+eval/questions.jsonl
+results/raw/real/
+results/processed/real/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.env
