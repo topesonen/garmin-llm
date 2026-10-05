@@ -1,0 +1,3 @@
+{"id":"chatcmpl-824","object":"chat.completion","created":1791224160,"model":"qwen2.5-coder:1.5b","system_fingerprint":"fp_ollama","choices":[{"index":0,"message":{"role":"assistant","content":"To count the rows in a table named `activities` in DuckDB, you can use the `COUNT(*)` function. Here's the SQL query:\n\n```sql\nSELECT COUNT(*) FROM activities;\n```\n\nThis query will return the total number of rows in the `activities` table."},"finish_reason":"stop"}],"usage":{"prompt_tokens":48,"prompt_tokens_details":{"cached_tokens":0},"completion_tokens":59,"total_tokens":107}}
+
+HTTP 200

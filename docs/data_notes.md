@@ -37,9 +37,18 @@ All empty, constant or near-empty in this export: Favorite (always False), Train
 
 Not checkable from the data alone: HR, power, elevation, respiration, ground contact time units follow Garmin's display conventions. Covered by the manual check in `docs/validation.md`.
 
+## Manual corrections to the raw CSV
+
+The export is not used exactly as downloaded. On 2026-10-03 Topias corrected four activities by hand in `data/raw/Activities.csv`; the untouched export is kept next to it as `Activities.original.csv`.
+
+- What was wrong: four `Running` activities in 2026 had timer and elapsed times of 34 to 57 hours for 6.2 to 8.8 km, with calories of 24,072 to 40,356. They have no HR and no pace, and timer time equal to elapsed time, which is the pattern of a manually entered activity. The raw text was a normal `hh:mm:ss` value, so this was in the source data, not a parsing error.
+- What was changed: `Time` and `Elapsed Time` on those four rows, now 34 to 57 minutes, and their `Calories`.
+- After the correction: no activity has a timer time over 8 hours (longest 4.48 h), the highest calorie value is 3730, and 4 activities have no calorie value (1 of the four corrected runs, 3 others).
+- There is no ingest rule for this. A fresh export from Garmin Connect will bring the four values back, and the same check (timer time over 8 hours) will find them.
+
 ## Things to know for eval questions
 
-- 6 activities have elapsed time more than 1.5 x timer time (long pauses or a forgotten stop). Questions about duration should use `timer_time_s`.
+- 6 activities have elapsed time more than 1.5 x timer time (long pauses or a forgotten stop); 2 of them have an elapsed time over 8 hours. 1 activity has elapsed time shorter than timer time. Questions about duration should use `timer_time_s`.
 - Some activities are very short (seconds) and look accidental. Not removed; decide whether eval questions should exclude them.
 - `workout_label` is mixed English and Finnish and inconsistent (e.g. several spellings for stroller runs). Good test material for the model, but gold SQL for label-based questions must list the exact labels.
 - Race names in `workout_label` still contain city names inside the event name (e.g. a Helsinki marathon). Fine locally; never publish label values.
