@@ -8,7 +8,7 @@ Two phases:
 
 The application talks to the model only through the OpenAI-compatible API, so switching from Ollama to vLLM is a config change, not a rewrite.
 
-## Current status (2026-10-03)
+## Current status (2026-10-05)
 
 Done:
 - Data source: Garmin Connect activities CSV export (`Activities.csv`), stored in `data/raw/` (gitignored).
@@ -16,13 +16,16 @@ Done:
 - `docs/schema.md`: column-level schema with units, written to double as the model's schema context.
 - `docs/data_notes.md`: export quirks, how each was handled, unit checks done from the data, and notes for eval questions.
 - `.gitignore` covering raw data, private config, the DuckDB file, CSVs and real-data eval files.
+- Repo is on GitHub as `garmin-llm` (public). Python venv with pinned dependencies.
+- Topias confirmed on 2026-10-05 that the CSV covers the full Garmin history.
+- Four activities with wrong durations corrected by hand in the raw CSV; see `docs/data_notes.md`.
+- A0: Ollama 0.35.1 installed, `qwen2.5-coder:1.5b` pulled as the smoke-test model, generation speed measured with `scripts/bench_prompt.py` (about 15 tokens/s, CPU-only). Recorded in `docs/environment.md`, raw runs in `results/raw/environment/`.
 
 Open:
-- Topias to confirm whether the CSV holds the full Garmin history or only the activities loaded in the list at export time.
-- Manual validation of 5 activities against Garmin Connect (A1, last step).
-- Everything from A0 and A2 onwards.
+- Manual validation of 5 activities against Garmin Connect (A1, last step). `docs/validation.md` records pass/fail only; the values stay in `data/private/`.
+- Everything from A2 onwards.
 
-Next session, in order: A0 (environment check) and the A1 manual validation can run in parallel; then A2.
+Next session: A2 (baseline assistant). It needs the `openai` package added to `requirements.txt`. The A1 manual validation can run in parallel and must be finished before A3.
 
 ## Why this project
 
@@ -39,13 +42,13 @@ Next session, in order: A0 (environment check) and the A1 manual validation can 
 | OS | Ubuntu 24.04.4 LTS |
 | CPU | Intel i7-8665U, 4 cores / 8 threads |
 | RAM | 32 GB |
-| GPU | NVIDIA GeForce MX250 (low VRAM) + Intel UHD 620 |
+| GPU | NVIDIA GeForce MX250 (low VRAM, no driver installed) + Intel UHD 620 |
 
 Implications:
-- Treat this as CPU inference. Check in A0 whether Ollama uses the MX250 and whether partial offload helps or hurts; if it hurts or fails, force CPU and document it.
+- Inference is CPU-only, decided 2026-10-03. No NVIDIA driver is installed, so Ollama does not see the MX250. The Ollama install script installs one without asking; see `docs/environment.md` before upgrading Ollama.
 - Models in the 1B to 4B range are the default. 7B to 8B fit in RAM but expect slow generation; use them for comparison runs.
 - Eval runs are slow. Scripts must be resumable and cache every model output.
-- Measured tokens/s on this laptop is a result to report, not a number to assume.
+- Measured tokens/s on this laptop is a result to report, not a number to assume. First measurement is in `docs/environment.md`.
 
 ## Open decisions (Topias decides, agent does not)
 
@@ -55,7 +58,9 @@ Implications:
 | Exclude accidental short activities in eval questions | Yes / no, and threshold | TBD |
 | Full Garmin account export later (FIT files, sleep, VO2max) | See `GARMIN_SETUP.md`. Not needed for v1. | Deferred |
 | Interface | CLI only, or a minimal web UI (e.g. Streamlit or Gradio) | TBD |
-| Repo name and visibility | | TBD |
+| Repo name and visibility | | Decided 2026-10-03: `garmin-llm`, public |
+| GPU use in Phase A | CPU-only, or install the NVIDIA driver and test offload to the MX250 | Decided 2026-10-03: CPU-only |
+| How `docs/validation.md` stays private | Gitignore the file, or record only pass/fail per field with no values. `docs/` is committed and the repo is public. | Decided 2026-10-05: pass/fail per field only in `docs/validation.md`; the compared values go in `data/private/validation_values.md` (gitignored) |
 
 ## Stack
 
@@ -78,12 +83,13 @@ Implications:
 ### A0. Environment check
 Install Ollama, pull one small model, confirm GPU behaviour, record CPU-only vs offload tokens/s for one fixed prompt.
 Done when: `docs/environment.md` records versions, GPU behaviour and measured numbers.
+Status: done 2026-10-05, CPU-only numbers only. The offload comparison was not run because no NVIDIA driver is installed, by decision.
 
 ### A1. Data (mostly done)
 - [x] Ingest CSV into DuckDB (`src/ingest_csv.py`)
 - [x] Schema doc (`docs/schema.md`) and data notes (`docs/data_notes.md`)
-- [ ] Topias: confirm the CSV covers the full history
-- [ ] Topias: check 5 activities (a race, a long run, an interval session, a track or treadmill run, a non-running activity) against Garmin Connect: date and start time, distance, timer time, average HR, elevation gain, power if present. Record in `docs/validation.md`.
+- [x] Topias: confirm the CSV covers the full history (confirmed 2026-10-05)
+- [ ] Topias: check 5 activities (a race, a long run, an interval session, a track or treadmill run, a non-running activity) against Garmin Connect: date and start time, distance, timer time, average HR, elevation gain, power if present. Record pass/fail per field in `docs/validation.md`, and the compared values in `data/private/validation_values.md` (gitignored), so no individual row is published.
 Done when: `docs/validation.md` shows the check passed. Do not write eval questions before that.
 
 ### A2. Baseline assistant
@@ -131,12 +137,13 @@ Phase B decisions (model, GPU provider, GPU type, spend cap) are made by Topias 
 - The `Title` column is not loaded into the database. `workout_label` strips leading place names using `data/private/place_names.txt`; race names can still contain a city inside the event name, so label values are never published.
 - No latitude, longitude or location columns in any table.
 - Real-data results are published only as aggregate metrics. Query outputs, sample rows, label values and eval questions about real data stay private.
+- **Aggregates of the real data in this public repo are there on purpose** (Topias, 2026-10-05). `docs/data_notes.md` and this file contain row counts, the date range, counts per check, and minimum, maximum and range values computed from the real activities. The handful of example labels in `docs/schema.md` were also approved for publication (2026-10-03); other label values stay private. Individual rows are not published.
 - **Claude Code is a cloud model.** Anything it reads or prints goes to Anthropic. During development, the agent works against the schema and synthetic data; it does not open `data/raw/`, does not print real rows, and checks real-data logic with aggregate queries (counts, null rates, min/max) unless Topias explicitly asks otherwise in the session.
 
 ## Repo layout
 
 ```
-local-sql/
+garmin-llm/
   README.md
   PROJECT.md
   CLAUDE.md               points Claude Code to this file
@@ -145,7 +152,7 @@ local-sql/
   .gitignore
   configs/                one YAML per experiment configuration
   data/raw/               gitignored: Activities.csv
-  data/private/           gitignored: place_names.txt
+  data/private/           gitignored: place_names.txt, validation_values.md
   data/warehouse/         gitignored real DB; synthetic DB may be committed
   data/synthetic/         synthetic CSV/DB, committed
   src/
@@ -159,14 +166,17 @@ local-sql/
     questions_synthetic.jsonl
     run_eval.py
     score.py
-  scripts/make_synthetic.py
+  scripts/
+    bench_prompt.py       done
+    make_synthetic.py
   results/raw/
+    environment/          A0 benchmark runs, committed
   results/processed/
   docs/
     schema.md             done
     data_notes.md         done
-    environment.md
-    validation.md
+    environment.md        done
+    validation.md         pass/fail only, no values
   costs.md                Phase B only
 ```
 
@@ -191,3 +201,5 @@ One line describing what was built and measured, with real numbers from `results
 | Date | Phase | What was done | Next step |
 |---|---|---|---|
 | 2026-10-03 | A1 | CSV export profiled; `ingest_csv.py`, `schema.md`, `data_notes.md`, `.gitignore` written; quirks found: Track Running distance in metres, pace/speed mixed in one column, place names in titles | Topias: confirm full history, run manual validation. Agent: A0 environment check |
+| 2026-10-03 | Setup, A1, A0 | venv and git set up, repo pushed as `garmin-llm` (public); CSV re-ingested (548 raw rows, 546 activities); four runs with durations of 34 to 57 hours found by aggregate checks and corrected by hand in the CSV; Ollama 0.35.1 installed; its install script added an NVIDIA driver, which was removed | Agent: pull the model and benchmark |
+| 2026-10-05 | A0 | `qwen2.5-coder:1.5b` pulled and digest recorded; `scripts/bench_prompt.py` written and run 5 times (about 15 generated tokens/s, 21.8 s cold request); OpenAI-compatible endpoint confirmed; `docs/environment.md` written. Found: output text differs between cold and cached runs at temperature 0, and the model adds a code fence or prose around the SQL | Topias: run manual validation (pass/fail public, values private), decide on adding `openai`. Agent: A2 baseline assistant |

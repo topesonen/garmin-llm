@@ -5,7 +5,7 @@ Findings from loading `Activities.csv` (Garmin Connect > Activities > Export CSV
 ## Source
 
 - 548 rows, 48 columns, activities from 2024-02-28 to 2026-10-01.
-- To confirm (Topias): is this the full Garmin history, or only what the activity list had loaded when exported?
+- Full Garmin history
 
 ## Quirks handled in `src/ingest_csv.py`
 
@@ -48,7 +48,7 @@ The export is not used exactly as downloaded. On 2026-10-03 Topias corrected fou
 
 ## Things to know for eval questions
 
-- 6 activities have elapsed time more than 1.5 x timer time (long pauses or a forgotten stop); 2 of them have an elapsed time over 8 hours. 1 activity has elapsed time shorter than timer time. Questions about duration should use `timer_time_s`.
+- 6 activities have elapsed time more than 1.5 x timer time (long pauses); 2 of them have an elapsed time over 8 hours. 1 activity has elapsed time shorter than timer time. Questions about duration should use `timer_time_s`.
 - Some activities are very short (seconds) and look accidental. Not removed; decide whether eval questions should exclude them.
 - `workout_label` is mixed English and Finnish and inconsistent (e.g. several spellings for stroller runs). Good test material for the model, but gold SQL for label-based questions must list the exact labels.
 - Race names in `workout_label` still contain city names inside the event name (e.g. a Helsinki marathon). Fine locally; never publish label values.
