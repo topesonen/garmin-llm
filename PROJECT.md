@@ -8,7 +8,7 @@ Two phases:
 
 The application talks to the model only through the OpenAI-compatible API, so switching from Ollama to vLLM is a config change, not a rewrite.
 
-## Current status (2026-10-05)
+## Current status (2026-10-06)
 
 Done:
 - Data source: Garmin Connect activities CSV export (`Activities.csv`), stored in `data/raw/` (gitignored).
@@ -20,12 +20,16 @@ Done:
 - Topias confirmed on 2026-10-05 that the CSV covers the full Garmin history.
 - Four activities with wrong durations corrected by hand in the raw CSV; see `docs/data_notes.md`.
 - A0: Ollama 0.35.1 installed, `qwen2.5-coder:1.5b` pulled as the smoke-test model, generation speed measured with `scripts/bench_prompt.py` (about 15 tokens/s, CPU-only). Recorded in `docs/environment.md`, raw runs in `results/raw/environment/`.
+- A1 complete: manual validation of six activities against Garmin Connect passed on 2026-10-06 (`docs/validation.md`). Finding: the export writes no value where Garmin Connect shows an elevation gain of 0, so NULL ascent can mean zero.
+- A2 complete: `python src/app.py "question"` prints the generated SQL and the result. Modules: `prompt.py`, `generate_sql.py` (OpenAI client, SQL extraction), `guardrails.py` (single SELECT on `activities`, checked with DuckDB's parser), `app.py` (read-only connection, no external access, timeout, row limit). Tested by the agent on a throwaway database with invented rows, and by Topias on the real data.
+- `README.md`: brief version, to be replaced by the full write-up in A8.
 
 Open:
-- Manual validation of 5 activities against Garmin Connect (A1, last step). `docs/validation.md` records pass/fail only; the values stay in `data/private/`.
-- Everything from A2 onwards.
+- Everything from A3 onwards.
+- Known gap in `guardrails.py`: a query that reads `activities` together with a system catalog or table function (e.g. `information_schema.tables`, `duckdb_settings()`) passes the check. It can only expose metadata; the read-only connection still applies.
+- A2 has no cache for model calls yet; required from A4.
 
-Next session: A2 (baseline assistant). It needs the `openai` package added to `requirements.txt`. The A1 manual validation can run in parallel and must be finished before A3.
+Next session: A3 (evaluation set). The agent may draft candidate questions and gold SQL from the schema; Topias verifies each one. A4 (harness) and A7 (synthetic data) do not depend on real questions and can be built alongside.
 
 ## Why this project
 
@@ -64,7 +68,7 @@ Implications:
 
 ## Stack
 
-- Python, pinned dependencies in `requirements.txt` (currently duckdb, pandas).
+- Python, pinned dependencies in `requirements.txt` (currently duckdb, openai, pandas).
 - DuckDB as the warehouse (`data/warehouse/garmin.duckdb`).
 - Ollama for generation, accessed through the OpenAI Python client and the Ollama OpenAI-compatible endpoint. Check the current Ollama docs for supported endpoints before relying on them.
 
@@ -85,16 +89,17 @@ Install Ollama, pull one small model, confirm GPU behaviour, record CPU-only vs 
 Done when: `docs/environment.md` records versions, GPU behaviour and measured numbers.
 Status: done 2026-10-05, CPU-only numbers only. The offload comparison was not run because no NVIDIA driver is installed, by decision.
 
-### A1. Data (mostly done)
+### A1. Data (done 2026-10-06)
 - [x] Ingest CSV into DuckDB (`src/ingest_csv.py`)
 - [x] Schema doc (`docs/schema.md`) and data notes (`docs/data_notes.md`)
 - [x] Topias: confirm the CSV covers the full history (confirmed 2026-10-05)
-- [ ] Topias: check 5 activities (a race, a long run, an interval session, a track or treadmill run, a non-running activity) against Garmin Connect: date and start time, distance, timer time, average HR, elevation gain, power if present. Record pass/fail per field in `docs/validation.md`, and the compared values in `data/private/validation_values.md` (gitignored), so no individual row is published.
+- [x] Topias: check 5 activities (a race, a long run, an interval session, a track or treadmill run, a non-running activity) against Garmin Connect: date and start time, distance, timer time, average HR, elevation gain, power if present. Record pass/fail per field in `docs/validation.md`, and the compared values in `data/private/validation_values.md` (gitignored), so no individual row is published. Done 2026-10-06 with six activities, all passed.
 Done when: `docs/validation.md` shows the check passed. Do not write eval questions before that.
 
 ### A2. Baseline assistant
 Pipeline steps 1 to 4 and 6 with one model, zero-shot.
 Done when: one command answers a question and prints the SQL and the result.
+Status: done 2026-10-06 (`src/app.py`).
 
 ### A3. Evaluation set
 30 to 50 questions, each with a gold SQL query written or verified by Topias. Spread across difficulty: simple filters and aggregates, date logic (weekly/monthly volume, comparisons between periods), window functions, label-based questions using `workout_label`, and multi-step questions. Include 5 to 10 questions the schema cannot answer.
@@ -157,10 +162,10 @@ garmin-llm/
   data/synthetic/         synthetic CSV/DB, committed
   src/
     ingest_csv.py         done
-    prompt.py
-    generate_sql.py
-    guardrails.py
-    app.py
+    prompt.py             done
+    generate_sql.py       done
+    guardrails.py         done
+    app.py                done
   eval/
     questions.jsonl       private (real data)
     questions_synthetic.jsonl
@@ -176,7 +181,8 @@ garmin-llm/
     schema.md             done
     data_notes.md         done
     environment.md        done
-    validation.md         pass/fail only, no values
+    validation.md         done; pass/fail only, no values
+  scratch/                gitignored: ad hoc queries against the real data
   costs.md                Phase B only
 ```
 
@@ -203,3 +209,4 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-03 | A1 | CSV export profiled; `ingest_csv.py`, `schema.md`, `data_notes.md`, `.gitignore` written; quirks found: Track Running distance in metres, pace/speed mixed in one column, place names in titles | Topias: confirm full history, run manual validation. Agent: A0 environment check |
 | 2026-10-03 | Setup, A1, A0 | venv and git set up, repo pushed as `garmin-llm` (public); CSV re-ingested (548 raw rows, 546 activities); four runs with durations of 34 to 57 hours found by aggregate checks and corrected by hand in the CSV; Ollama 0.35.1 installed; its install script added an NVIDIA driver, which was removed | Agent: pull the model and benchmark |
 | 2026-10-05 | A0 | `qwen2.5-coder:1.5b` pulled and digest recorded; `scripts/bench_prompt.py` written and run 5 times (about 15 generated tokens/s, 21.8 s cold request); OpenAI-compatible endpoint confirmed; `docs/environment.md` written. Found: output text differs between cold and cached runs at temperature 0, and the model adds a code fence or prose around the SQL | Topias: run manual validation (pass/fail public, values private), decide on adding `openai`. Agent: A2 baseline assistant |
+| 2026-10-06 | A1, A2 | Baseline assistant written (`prompt.py`, `generate_sql.py`, `guardrails.py`, `app.py`), `openai` 3.24.0 added; manual validation of six activities passed, with the elevation-gain NULL finding added to `data_notes.md` and `schema.md`; brief `README.md`; `scratch/` gitignored for ad hoc queries | Agent: draft candidate eval questions (A3), or start the harness (A4). Topias: verify questions and gold SQL |

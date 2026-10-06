@@ -28,8 +28,8 @@ One row per recorded workout from Garmin Connect. NULL means the value was not r
 | aerobic_te | DOUBLE | 0 to 5 scale | Garmin aerobic training effect |
 | avg_run_cadence_spm | DOUBLE | steps per minute | Average running cadence |
 | max_run_cadence_spm | DOUBLE | steps per minute | Maximum running cadence |
-| total_ascent_m | DOUBLE | metres | Elevation gain |
-| total_descent_m | DOUBLE | metres | Elevation loss |
+| total_ascent_m | DOUBLE | metres | Elevation gain. NULL when not recorded or zero |
+| total_descent_m | DOUBLE | metres | Elevation loss. NULL when not recorded or zero |
 | min_elevation_m | DOUBLE | metres | Lowest elevation |
 | max_elevation_m | DOUBLE | metres | Highest elevation |
 | avg_stride_length_m | DOUBLE | metres | Average stride length |

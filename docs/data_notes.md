@@ -35,7 +35,7 @@ All empty, constant or near-empty in this export: Favorite (always False), Train
 | Cadence x stride length vs speed from pace | Median difference 0.07 km/h: stride in metres, cadence in steps/min |
 | Vertical oscillation / stride vs vertical ratio | Median difference 0.07 points: oscillation in cm, ratio in percent |
 
-Not checkable from the data alone: HR, power, elevation, respiration, ground contact time units follow Garmin's display conventions. Covered by the manual check in `docs/validation.md`.
+Not checkable from the data alone: HR, power, elevation, respiration, ground contact time units follow Garmin's display conventions. HR, power and elevation were confirmed in the manual check in `docs/validation.md` (2026-10-06); respiration and ground contact time were not part of it.
 
 ## Manual corrections to the raw CSV
 
@@ -52,4 +52,5 @@ The export is not used exactly as downloaded. On 2026-10-03 Topias corrected fou
 - Some activities are very short (seconds) and look accidental. Not removed; decide whether eval questions should exclude them.
 - `workout_label` is mixed English and Finnish and inconsistent (e.g. several spellings for stroller runs). Good test material for the model, but gold SQL for label-based questions must list the exact labels.
 - Race names in `workout_label` still contain city names inside the event name (e.g. a Helsinki marathon). Fine locally; never publish label values.
-- Timestamps are assumed to be local start time. Confirm in the manual validation.
+- Timestamps are local start time, confirmed in the manual validation (2026-10-06).
+- NULL in `total_ascent_m` and `total_descent_m` can mean zero as well as not recorded. The export never writes 0 for elevation gain (223 rows have `--`, none has 0), and the manual validation found a track run where Garmin Connect shows 0 and the export has `--`. Sums are unaffected; averages skip those activities.

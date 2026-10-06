@@ -6,6 +6,9 @@ data/warehouse/*.duckdb.wal
 *.csv
 !data/synthetic/*.csv
 
+# Ad hoc queries against the real data
+scratch/
+
 # Eval questions and results about real data
 eval/questions.jsonl
 results/raw/real/
