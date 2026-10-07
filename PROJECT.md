@@ -8,7 +8,7 @@ Two phases:
 
 The application talks to the model only through the OpenAI-compatible API, so switching from Ollama to vLLM is a config change, not a rewrite.
 
-## Current status (2026-10-06)
+## Current status (2026-10-07)
 
 Done:
 - Data source: Garmin Connect activities CSV export (`Activities.csv`), stored in `data/raw/` (gitignored).
@@ -23,13 +23,18 @@ Done:
 - A1 complete: manual validation of six activities against Garmin Connect passed on 2026-10-06 (`docs/validation.md`). Finding: the export writes no value where Garmin Connect shows an elevation gain of 0, so NULL ascent can mean zero.
 - A2 complete: `python src/app.py "question"` prints the generated SQL and the result. Modules: `prompt.py`, `generate_sql.py` (OpenAI client, SQL extraction), `guardrails.py` (single SELECT on `activities`, checked with DuckDB's parser), `app.py` (read-only connection, no external access, timeout, row limit). Tested by the agent on a throwaway database with invented rows, and by Topias on the real data.
 - `README.md`: brief version, to be replaced by the full write-up in A8.
+- A3 complete for now: `eval/questions.yaml` (gitignored) holds 33 questions, all verified by Topias on 2026-10-07: 9 simple, 6 date logic, 5 window, 6 multi-step, 7 unanswerable. Candidates were drafted by the agent and tested on invented rows; Topias checked each against the real database. More questions can be added up to the 50 limit.
 
 Open:
-- Everything from A3 onwards.
-- Known gap in `guardrails.py`: a query that reads `activities` together with a system catalog or table function (e.g. `information_schema.tables`, `duckdb_settings()`) passes the check. It can only expose metadata; the read-only connection still applies.
+- Everything from A4 onwards.
+- No frozen snapshot of the database exists yet. A3 requires gold answers to be computed on one; to be made in A4 before the first eval run.
+- The prompt in `src/prompt.py` gives the model no way to decline: it asks for exactly one SELECT and nothing else. The 7 unanswerable questions cannot be scored until Topias decides how a decline is signalled and detected (prompt change, his decision).
+- PyYAML is needed to read `eval/questions.yaml` and is not in `requirements.txt` or the venv yet.
+- Harness comparison rules to settle in A4: numeric tolerance, and comparing values across numeric types (q033 returns its distance column as DECIMAL).
+- `guardrails.py` was changed on 2026-10-07 and has no automated tests yet. It now reads table names from the parsed query (`json_serialize_sql`) in place of `get_table_names`, which rejected valid queries with a `RANGE BETWEEN INTERVAL ... PRECEDING` window frame. The same change closed the earlier gap: system catalogs and table functions other than `generate_series`, `range` and `unnest` are now rejected. Checked by hand on 22 allow and reject cases and the 15 gold queries.
 - A2 has no cache for model calls yet; required from A4.
 
-Next session: A3 (evaluation set). The agent may draft candidate questions and gold SQL from the schema; Topias verifies each one. A4 (harness) and A7 (synthetic data) do not depend on real questions and can be built alongside.
+Next session: A4 (evaluation harness). First decisions for Topias: how the model declines an unanswerable question, and the numeric tolerance. A7 (synthetic data) can be built alongside.
 
 ## Why this project
 
@@ -102,10 +107,11 @@ Done when: one command answers a question and prints the SQL and the result.
 Status: done 2026-10-06 (`src/app.py`).
 
 ### A3. Evaluation set
-30 to 50 questions, each with a gold SQL query written or verified by Topias. Spread across difficulty: simple filters and aggregates, date logic (weekly/monthly volume, comparisons between periods), window functions, label-based questions using `workout_label`, and multi-step questions. Include 5 to 10 questions the schema cannot answer.
+30 to 50 questions, each with a gold SQL query written or verified by Topias. Spread across difficulty: simple filters and aggregates, date logic (weekly/monthly volume, comparisons between periods), window functions, and multi-step questions. Include 5 to 10 questions the schema cannot answer. Label-based questions using `workout_label` were dropped (Topias, 2026-10-07): labels are rarely used in the data.
 Gold answers are computed by running the gold SQL on a frozen snapshot of the database, so expected results are never typed by hand.
 The agent may draft candidate questions and SQL from the schema; only Topias marks them verified.
-Done when: `eval/questions.jsonl` exists and every row is verified.
+Done when: `eval/questions.yaml` exists and every question is verified.
+Status: done for now 2026-10-07 with 33 verified questions. Each row has `id`, `category`, `question`, `answerable`, `gold_sql`, `ordered`, `verified` and `notes`. Pace answers are in decimal minutes per km (see `docs/data_notes.md`).
 
 ### A4. Evaluation harness
 Metrics:
@@ -129,6 +135,19 @@ Minimal UI for demos.
 ### A8. Write-up
 README: use case, architecture, guardrails, eval method, results, failure analysis, limitations, hardware.
 Done when: Topias has checked every number against `results/raw/`.
+
+## Engineering backlog (to do at some point)
+
+Added 2026-10-06 by Topias. These make the project show the engineering side of AI engineer work: wrapping a model in an API, tracking cost and latency per call, evaluating output, handling failures and retries, and structuring Python as a package. Not scheduled yet; Topias decides when each one happens.
+
+| Item | What it means here | Relation to the plan |
+|---|---|---|
+| API endpoint | Serve the assistant over HTTP with FastAPI: a question in, SQL and result out | New. Could replace or sit under the A6 interface |
+| Per-request logging | Record prompt tokens, completion tokens, latency and cost for every model call | New. Token counts and latency are already returned by `generate_sql.py` but not stored. Cost is zero on local hardware and becomes real in Phase B |
+| Eval set with measured accuracy | 20 to 30 questions with known correct SQL, accuracy measured | Already planned as A3 and A4 (30 to 50 questions) |
+| Failures and retries | Handle a model server that is down or slow, a reply with no usable SQL, and a query that errors | Partly planned: pipeline step 5 (error feedback retry) is an A5 experiment. Retries and timeouts on the model call itself are new |
+| Tests | Automated tests for extraction, guardrails and query execution, runnable without the real data | New. The checks done by hand in A2 are the starting point |
+| Package layout | Installable package with a `pyproject.toml` in place of loose scripts in `src/` | New. Changes the repo layout below |
 
 ## Phase B: vLLM serving benchmark (after Phase A)
 
@@ -167,8 +186,8 @@ garmin-llm/
     guardrails.py         done
     app.py                done
   eval/
-    questions.jsonl       private (real data)
-    questions_synthetic.jsonl
+    questions.yaml        private (real data)
+    questions_synthetic.yaml
     run_eval.py
     score.py
   scripts/
@@ -210,3 +229,4 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-03 | Setup, A1, A0 | venv and git set up, repo pushed as `garmin-llm` (public); CSV re-ingested (548 raw rows, 546 activities); four runs with durations of 34 to 57 hours found by aggregate checks and corrected by hand in the CSV; Ollama 0.35.1 installed; its install script added an NVIDIA driver, which was removed | Agent: pull the model and benchmark |
 | 2026-10-05 | A0 | `qwen2.5-coder:1.5b` pulled and digest recorded; `scripts/bench_prompt.py` written and run 5 times (about 15 generated tokens/s, 21.8 s cold request); OpenAI-compatible endpoint confirmed; `docs/environment.md` written. Found: output text differs between cold and cached runs at temperature 0, and the model adds a code fence or prose around the SQL | Topias: run manual validation (pass/fail public, values private), decide on adding `openai`. Agent: A2 baseline assistant |
 | 2026-10-06 | A1, A2 | Baseline assistant written (`prompt.py`, `generate_sql.py`, `guardrails.py`, `app.py`), `openai` 3.24.0 added; manual validation of six activities passed, with the elevation-gain NULL finding added to `data_notes.md` and `schema.md`; brief `README.md`; `scratch/` gitignored for ad hoc queries | Agent: draft candidate eval questions (A3), or start the harness (A4). Topias: verify questions and gold SQL |
+| 2026-10-07 | A3 | Eval set written and verified: 33 questions in `eval/questions.yaml` (format changed from JSONL to YAML); label-based questions dropped; pace questions use minutes per km; `guardrails.py` rewritten to read table names from the parsed query after it rejected a valid `RANGE BETWEEN INTERVAL` window, which also closed the system-catalog gap | Topias: decide how the model declines, and the numeric tolerance. Agent: A4 harness, add PyYAML, freeze a database snapshot |

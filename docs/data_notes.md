@@ -53,4 +53,5 @@ The export is not used exactly as downloaded. On 2026-10-03 Topias corrected fou
 - `workout_label` is mixed English and Finnish and inconsistent (e.g. several spellings for stroller runs). Good test material for the model, but gold SQL for label-based questions must list the exact labels.
 - Race names in `workout_label` still contain city names inside the event name (e.g. a Helsinki marathon). Fine locally; never publish label values.
 - Timestamps are local start time, confirmed in the manual validation (2026-10-06).
+- Pace questions ask for minutes per km, not seconds per km (Topias, 2026-10-07). The pace columns stay in seconds per km, so the gold SQL divides by 60 and the expected value is decimal minutes (4.5 for 4:30 per km). The question text says so, because the harness compares values and cannot match a `4:30` string against a number.
 - NULL in `total_ascent_m` and `total_descent_m` can mean zero as well as not recorded. The export never writes 0 for elevation gain (223 rows have `--`, none has 0), and the manual validation found a track run where Garmin Connect shows 0 and the export has `--`. Sums are unaffected; averages skip those activities.

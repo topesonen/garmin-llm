@@ -10,7 +10,7 @@ data/warehouse/*.duckdb.wal
 scratch/
 
 # Eval questions and results about real data
-eval/questions.jsonl
+eval/questions.yaml
 results/raw/real/
 results/processed/real/
 
