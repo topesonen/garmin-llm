@@ -15,7 +15,7 @@ Done:
 - `src/ingest_csv.py` loads it into `data/warehouse/garmin.duckdb` as `raw_activities` (text, Title column removed) and `activities` (typed, cleaned).
 - `docs/schema.md`: column-level schema with units, written to double as the model's schema context.
 - `docs/data_notes.md`: export quirks, how each was handled, unit checks done from the data, and notes for eval questions.
-- `.gitignore` covering raw data, private config, the DuckDB file, CSVs and real-data eval files.
+- `.gitignore` covering raw data, private config, the DuckDB file, CSVs and real-data results.
 - Repo is on GitHub as `garmin-llm` (public). Python venv with pinned dependencies.
 - Topias confirmed on 2026-10-05 that the CSV covers the full Garmin history.
 - Four activities with wrong durations corrected by hand in the raw CSV; see `docs/data_notes.md`.
@@ -23,7 +23,7 @@ Done:
 - A1 complete: manual validation of six activities against Garmin Connect passed on 2026-10-06 (`docs/validation.md`). Finding: the export writes no value where Garmin Connect shows an elevation gain of 0, so NULL ascent can mean zero.
 - A2 complete: `python src/app.py "question"` prints the generated SQL and the result. Modules: `prompt.py`, `generate_sql.py` (OpenAI client, SQL extraction), `guardrails.py` (single SELECT on `activities`, checked with DuckDB's parser), `app.py` (read-only connection, no external access, timeout, row limit). Tested by the agent on a throwaway database with invented rows, and by Topias on the real data.
 - `README.md`: brief version, to be replaced by the full write-up in A8.
-- A3 complete for now: `eval/questions.yaml` (gitignored) holds 33 questions, all verified by Topias on 2026-10-07: 9 simple, 6 date logic, 5 window, 6 multi-step, 7 unanswerable. Candidates were drafted by the agent and tested on invented rows; Topias checked each against the real database. More questions can be added up to the 50 limit.
+- A3 complete for now: `eval/questions.yaml` (committed, public) holds 33 questions, all verified by Topias on 2026-10-07: 9 simple, 6 date logic, 5 window, 6 multi-step, 7 unanswerable. Candidates were drafted by the agent and tested on invented rows; Topias checked each against the real database. More questions can be added up to the 50 limit.
 
 Open:
 - Everything from A4 onwards.
@@ -157,10 +157,11 @@ Phase B decisions (model, GPU provider, GPU type, spend cap) are made by Topias 
 
 ## Privacy
 
-- `data/raw/`, `data/private/`, the real DuckDB file, CSVs and real-data eval files are gitignored and never committed.
+- `data/raw/`, `data/private/`, the real DuckDB file, CSVs and real-data results are gitignored and never committed.
 - The `Title` column is not loaded into the database. `workout_label` strips leading place names using `data/private/place_names.txt`; race names can still contain a city inside the event name, so label values are never published.
 - No latitude, longitude or location columns in any table.
-- Real-data results are published only as aggregate metrics. Query outputs, sample rows, label values and eval questions about real data stay private.
+- Real-data results are published only as aggregate metrics. Query outputs, gold answers, sample rows and label values stay private.
+- **`eval/questions.yaml` is public** (Topias, 2026-10-07). It holds question text and gold SQL only, and gold answers are computed at run time, so it contains no value from the real data. It was private while label-based questions were planned; those were dropped. Questions and notes must not contain label values, race names, places or query results.
 - **Aggregates of the real data in this public repo are there on purpose** (Topias, 2026-10-05). `docs/data_notes.md` and this file contain row counts, the date range, counts per check, and minimum, maximum and range values computed from the real activities. The handful of example labels in `docs/schema.md` were also approved for publication (2026-10-03); other label values stay private. Individual rows are not published.
 - **Claude Code is a cloud model.** Anything it reads or prints goes to Anthropic. During development, the agent works against the schema and synthetic data; it does not open `data/raw/`, does not print real rows, and checks real-data logic with aggregate queries (counts, null rates, min/max) unless Topias explicitly asks otherwise in the session.
 
@@ -186,7 +187,7 @@ garmin-llm/
     guardrails.py         done
     app.py                done
   eval/
-    questions.yaml        private (real data)
+    questions.yaml        done; questions and gold SQL only, no answers
     questions_synthetic.yaml
     run_eval.py
     score.py
@@ -229,4 +230,4 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-03 | Setup, A1, A0 | venv and git set up, repo pushed as `garmin-llm` (public); CSV re-ingested (548 raw rows, 546 activities); four runs with durations of 34 to 57 hours found by aggregate checks and corrected by hand in the CSV; Ollama 0.35.1 installed; its install script added an NVIDIA driver, which was removed | Agent: pull the model and benchmark |
 | 2026-10-05 | A0 | `qwen2.5-coder:1.5b` pulled and digest recorded; `scripts/bench_prompt.py` written and run 5 times (about 15 generated tokens/s, 21.8 s cold request); OpenAI-compatible endpoint confirmed; `docs/environment.md` written. Found: output text differs between cold and cached runs at temperature 0, and the model adds a code fence or prose around the SQL | Topias: run manual validation (pass/fail public, values private), decide on adding `openai`. Agent: A2 baseline assistant |
 | 2026-10-06 | A1, A2 | Baseline assistant written (`prompt.py`, `generate_sql.py`, `guardrails.py`, `app.py`), `openai` 3.24.0 added; manual validation of six activities passed, with the elevation-gain NULL finding added to `data_notes.md` and `schema.md`; brief `README.md`; `scratch/` gitignored for ad hoc queries | Agent: draft candidate eval questions (A3), or start the harness (A4). Topias: verify questions and gold SQL |
-| 2026-10-07 | A3 | Eval set written and verified: 33 questions in `eval/questions.yaml` (format changed from JSONL to YAML); label-based questions dropped; pace questions use minutes per km; `guardrails.py` rewritten to read table names from the parsed query after it rejected a valid `RANGE BETWEEN INTERVAL` window, which also closed the system-catalog gap | Topias: decide how the model declines, and the numeric tolerance. Agent: A4 harness, add PyYAML, freeze a database snapshot |
+| 2026-10-07 | A3 | Eval set written and verified: 33 questions in `eval/questions.yaml` (format changed from JSONL to YAML); label-based questions dropped; pace questions use minutes per km; `guardrails.py` rewritten to read table names from the parsed query after it rejected a valid `RANGE BETWEEN INTERVAL` window, which also closed the system-catalog gap; `eval/questions.yaml` made public by Topias' decision | Topias: decide how the model declines, and the numeric tolerance. Agent: A4 harness, add PyYAML, freeze a database snapshot |

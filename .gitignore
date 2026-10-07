@@ -9,8 +9,7 @@ data/warehouse/*.duckdb.wal
 # Ad hoc queries against the real data
 scratch/
 
-# Eval questions and results about real data
-eval/questions.yaml
+# Results about real data
 results/raw/real/
 results/processed/real/
 

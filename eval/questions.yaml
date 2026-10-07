@@ -1,0 +1,533 @@
+# Eval questions about the real data. This file is public: it holds questions and gold SQL only.
+# Do not add label values, race names, places or any result of a query on the real data.
+# Only Topias sets verified to true, after checking the gold SQL on the real database.
+
+- id: q001
+  category: simple
+  question: How many runs did I do in 2025?
+  answerable: true
+  gold_sql: |
+    SELECT count(*)
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: q002
+  category: simple
+  question: What is the total distance I ran in 2024, in km?
+  answerable: true
+  gold_sql: |
+    SELECT sum(distance_km)
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2024-01-01'
+      AND start_time_local < TIMESTAMP '2025-01-01'
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: q003
+  category: simple
+  question: What is the distance of my longest run, in km?
+  answerable: true
+  gold_sql: |
+    SELECT max(distance_km)
+    FROM activities
+    WHERE sport_group = 'running'
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: q004
+  category: simple
+  question: What is my average heart rate across all cycling activities?
+  answerable: true
+  gold_sql: |
+    SELECT avg(avg_hr_bpm)
+    FROM activities
+    WHERE sport_group = 'cycling'
+  ordered: false
+  verified: true
+  notes: Unweighted mean of per-activity averages, not weighted by duration.
+
+- id: q005
+  category: simple
+  question: How many strength training sessions lasted longer than one hour?
+  answerable: true
+  gold_sql: |
+    SELECT count(*)
+    FROM activities
+    WHERE sport_group = 'strength'
+      AND timer_time_s > 3600
+  ordered: false
+  verified: true
+  notes: Duration is timer_time_s, as docs/schema.md instructs.
+
+- id: q006
+  category: date_logic
+  question: >-
+    For each month of 2025 in which I ran, what was my total running distance in km?
+    Return the month number (1 to 12) and the total, ordered by month.
+  answerable: true
+  gold_sql: |
+    SELECT month(start_time_local) AS month, sum(distance_km) AS total_km
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+    GROUP BY month(start_time_local)
+    ORDER BY month(start_time_local)
+  ordered: true
+  verified: true
+  notes: Months without runs are absent from the result, as the question states.
+
+- id: q007
+  category: date_logic
+  question: >-
+    Which week of 2025 had my highest total running distance? Weeks run Monday to Sunday.
+    Count only weeks whose Monday falls in 2025, and answer with the date of that Monday.
+  answerable: true
+  gold_sql: |
+    SELECT CAST(date_trunc('week', start_time_local) AS DATE) AS week_start
+    FROM activities
+    WHERE sport_group = 'running'
+      AND date_trunc('week', start_time_local) >= TIMESTAMP '2025-01-01'
+      AND date_trunc('week', start_time_local) < TIMESTAMP '2026-01-01'
+    GROUP BY date_trunc('week', start_time_local)
+    ORDER BY sum(distance_km) DESC
+    LIMIT 1
+  ordered: false
+  verified: true
+  notes: >-
+    The filter is on the week's Monday, not on the activity date, so the last week of 2025
+    includes runs from early January 2026. Check there is no tie for the top week.
+
+- id: q008
+  category: date_logic
+  question: >-
+    How many more km did I run from January to June 2026 than from January to June 2025?
+    A negative number means I ran less in 2026.
+  answerable: true
+  gold_sql: |
+    SELECT
+      sum(CASE WHEN start_time_local >= TIMESTAMP '2026-01-01'
+                AND start_time_local < TIMESTAMP '2026-07-01' THEN distance_km END)
+      - sum(CASE WHEN start_time_local >= TIMESTAMP '2025-01-01'
+                  AND start_time_local < TIMESTAMP '2025-07-01' THEN distance_km END)
+      AS km_difference
+    FROM activities
+    WHERE sport_group = 'running'
+  ordered: false
+  verified: true
+  notes: Both periods include all of June.
+
+- id: q009
+  category: date_logic
+  question: How many activities of any sport did I start on a Saturday or Sunday in 2025?
+  answerable: true
+  gold_sql: |
+    SELECT count(*)
+    FROM activities
+    WHERE isodow(start_time_local) IN (6, 7)
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+  ordered: false
+  verified: true
+  notes: isodow numbers Monday as 1 and Sunday as 7.
+
+- id: q010
+  category: date_logic
+  question: On how many different calendar days in 2025 did I record at least one activity?
+  answerable: true
+  gold_sql: |
+    SELECT count(DISTINCT CAST(start_time_local AS DATE))
+    FROM activities
+    WHERE start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: q011
+  category: window
+  question: >-
+    What is the longest break between two consecutive runs, in days?
+    Count the difference between the calendar dates of the two runs.
+  answerable: true
+  gold_sql: |
+    SELECT max(gap_days)
+    FROM (
+      SELECT CAST(start_time_local AS DATE)
+             - lag(CAST(start_time_local AS DATE)) OVER (ORDER BY start_time_local) AS gap_days
+      FROM activities
+      WHERE sport_group = 'running'
+    )
+  ordered: false
+  verified: true
+  notes: Covers the whole history. Two runs on the same day give a gap of 0.
+
+- id: q012
+  category: window
+  question: >-
+    For each month of 2025 in which I ran, what was my cumulative running distance in km
+    from the start of 2025 to the end of that month? Return the month number (1 to 12)
+    and the cumulative total, ordered by month.
+  answerable: true
+  gold_sql: |
+    SELECT month(start_time_local) AS month,
+           sum(sum(distance_km)) OVER (ORDER BY month(start_time_local)) AS cumulative_km
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+    GROUP BY month(start_time_local)
+    ORDER BY month(start_time_local)
+  ordered: true
+  verified: true
+  notes: The last row must equal the total running distance for 2025.
+
+- id: q013
+  category: window
+  question: >-
+    For each calendar year, on what date did I do my longest run by distance?
+    Return the year and the date, ordered by year.
+  answerable: true
+  gold_sql: |
+    SELECT year(start_time_local) AS year, CAST(start_time_local AS DATE) AS run_date
+    FROM activities
+    WHERE sport_group = 'running'
+    QUALIFY row_number() OVER (
+      PARTITION BY year(start_time_local) ORDER BY distance_km DESC NULLS LAST
+    ) = 1
+    ORDER BY year
+  ordered: true
+  verified: true
+  notes: Check that no year has two runs tied for the longest distance.
+
+- id: q014
+  category: window
+  question: >-
+    What is the highest total running distance in km that I have covered in any period
+    of 7 consecutive calendar days?
+  answerable: true
+  gold_sql: |
+    SELECT max(km_7d)
+    FROM (
+      SELECT sum(distance_km) OVER (
+               ORDER BY CAST(start_time_local AS DATE)
+               RANGE BETWEEN INTERVAL 6 DAY PRECEDING AND CURRENT ROW
+             ) AS km_7d
+      FROM activities
+      WHERE sport_group = 'running'
+    )
+  ordered: false
+  verified: true
+  notes: >-
+    Any 7 days, not Monday to Sunday weeks. Each window ends on a day with a run,
+    which is enough because the best window can always be shifted to end on one.
+
+- id: q015
+  category: window
+  question: >-
+    What is my longest streak of consecutive calendar days with at least one run?
+    Answer with the number of days.
+  answerable: true
+  gold_sql: |
+    WITH run_days AS (
+      SELECT DISTINCT CAST(start_time_local AS DATE) AS d
+      FROM activities
+      WHERE sport_group = 'running'
+    ),
+    grouped AS (
+      SELECT d, d - CAST(row_number() OVER (ORDER BY d) AS INTEGER) AS streak_key
+      FROM run_days
+    )
+    SELECT max(streak_days)
+    FROM (SELECT count(*) AS streak_days FROM grouped GROUP BY streak_key)
+  ordered: false
+  verified: true
+  notes: >-
+    Consecutive days share the same streak_key, because the date and the row number
+    both go up by one.
+
+- id: q016
+  category: multi_step
+  question: >-
+    What percentage of my total running distance in 2025 came from runs of 15 km or longer?
+  answerable: true
+  gold_sql: |
+    SELECT 100.0 * sum(CASE WHEN distance_km >= 15 THEN distance_km ELSE 0 END)
+           / sum(distance_km) AS pct_from_long_runs
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+  ordered: false
+  verified: true
+  notes: The answer is on a 0 to 100 scale, not 0 to 1.
+
+- id: q017
+  category: multi_step
+  question: >-
+    In how many calendar months did I run more km in 2025 than in the same month of 2024?
+    Count only months in which I ran in both years.
+  answerable: true
+  gold_sql: |
+    WITH monthly AS (
+      SELECT year(start_time_local) AS year, month(start_time_local) AS month,
+             sum(distance_km) AS km
+      FROM activities
+      WHERE sport_group = 'running'
+        AND start_time_local >= TIMESTAMP '2024-01-01'
+        AND start_time_local < TIMESTAMP '2026-01-01'
+      GROUP BY year(start_time_local), month(start_time_local)
+    )
+    SELECT count(*)
+    FROM monthly AS y2025
+    JOIN monthly AS y2024 ON y2025.month = y2024.month
+    WHERE y2025.year = 2025
+      AND y2024.year = 2024
+      AND y2025.km > y2024.km
+  ordered: false
+  verified: true
+  notes: >-
+    The data starts on 2024-02-28, so February 2024 is a partial month and
+    January 2024 has no runs.
+
+- id: q018
+  category: multi_step
+  question: >-
+    What was my average weekly running distance in km in 2025? Weeks run Monday to Sunday.
+    Count only weeks whose Monday falls in 2025 and in which I ran at least once.
+  answerable: true
+  gold_sql: |
+    SELECT avg(week_km)
+    FROM (
+      SELECT sum(distance_km) AS week_km
+      FROM activities
+      WHERE sport_group = 'running'
+        AND date_trunc('week', start_time_local) >= TIMESTAMP '2025-01-01'
+        AND date_trunc('week', start_time_local) < TIMESTAMP '2026-01-01'
+      GROUP BY date_trunc('week', start_time_local)
+    )
+  ordered: false
+  verified: true
+  notes: Weeks without a run are left out of the average, as the question states.
+
+- id: q019
+  category: multi_step
+  question: >-
+    On how many calendar days have I recorded both a run and a strength training session?
+  answerable: true
+  gold_sql: |
+    SELECT count(*)
+    FROM (
+      SELECT CAST(start_time_local AS DATE) AS day
+      FROM activities
+      WHERE sport_group IN ('running', 'strength')
+      GROUP BY CAST(start_time_local AS DATE)
+      HAVING count(DISTINCT sport_group) = 2
+    )
+  ordered: false
+  verified: true
+  notes: Covers the whole history.
+
+- id: q020
+  category: multi_step
+  question: >-
+    How many of my runs were longer in distance than the average distance of all my runs
+    in the same calendar year?
+  answerable: true
+  gold_sql: |
+    SELECT count(*)
+    FROM (
+      SELECT distance_km,
+             avg(distance_km) OVER (PARTITION BY year(start_time_local)) AS year_avg_km
+      FROM activities
+      WHERE sport_group = 'running'
+    )
+    WHERE distance_km > year_avg_km
+  ordered: false
+  verified: true
+  notes: Covers the whole history. Each run is compared with the average of its own year.
+
+- id: q021
+  category: unanswerable
+  question: What was my average sleep duration in the week before my longest run?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: No sleep data in the table.
+
+- id: q022
+  category: unanswerable
+  question: What is my current VO2max?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: No VO2max column.
+
+- id: q023
+  category: unanswerable
+  question: Which pair of shoes have I run the most km in?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: No gear data in the table.
+
+- id: q024
+  category: unanswerable
+  question: What was the average air temperature during my runs in July 2025?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: No weather data in the table.
+
+- id: q025
+  category: unanswerable
+  question: What was my heart rate at the 5 km mark of my longest run?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: >-
+    The table has one row per activity, so nothing inside an activity can be answered.
+    A model may wrongly return avg_hr_bpm.
+
+- id: q026
+  category: unanswerable
+  question: How many hours did I spend in heart rate zone 2 in 2025?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: >-
+    No time-in-zone columns. A model may wrongly filter on avg_hr_bpm, which is the
+    average for a whole activity.
+
+- id: q027
+  category: unanswerable
+  question: What was my body weight at the start of 2026?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: No body weight data in the table.
+
+- id: q028
+  category: simple
+  question: >-
+    What is the fastest average pace of any run of 10 km or longer, in minutes per km
+    as a decimal number (for example 4.5 for 4:30 per km)?
+  answerable: true
+  gold_sql: |
+    SELECT min(avg_pace_s_per_km) / 60 AS pace_min_per_km
+    FROM activities
+    WHERE sport_group = 'running'
+      AND distance_km >= 10
+  ordered: false
+  verified: true
+  notes: >-
+    Fastest pace is the lowest value. Covers the whole history. The column is in
+    seconds per km, so the query has to divide by 60.
+
+- id: q029
+  category: simple
+  question: >-
+    What was my overall running pace in 2025, calculated as total timer time divided by
+    total distance? Count only runs with a recorded distance. Answer in minutes per km
+    as a decimal number (for example 4.5 for 4:30 per km).
+  answerable: true
+  gold_sql: |
+    SELECT sum(timer_time_s) / sum(distance_km) / 60 AS pace_min_per_km
+    FROM activities
+    WHERE sport_group = 'running'
+      AND distance_km IS NOT NULL
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+  ordered: false
+  verified: true
+  notes: >-
+    Not the same as avg(avg_pace_s_per_km), which weights a short run as much as a
+    long one. The question names the method so that only one answer is correct.
+
+- id: q030
+  category: simple
+  question: What was my total elevation gain in metres across all activities in 2025?
+  answerable: true
+  gold_sql: |
+    SELECT sum(total_ascent_m)
+    FROM activities
+    WHERE start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+  ordered: false
+  verified: true
+  notes: All sports. NULL ascent can mean zero; a sum is not affected by that.
+
+- id: q031
+  category: simple
+  question: >-
+    What is the highest elevation gain per km of any run of 5 km or longer,
+    in metres of gain per km?
+  answerable: true
+  gold_sql: |
+    SELECT max(total_ascent_m / distance_km) AS gain_m_per_km
+    FROM activities
+    WHERE sport_group = 'running'
+      AND distance_km >= 5
+  ordered: false
+  verified: true
+  notes: The 5 km minimum keeps very short activities from producing extreme ratios.
+
+- id: q032
+  category: date_logic
+  question: >-
+    In which month of 2025 did I gain the most elevation while running?
+    Answer with the month number (1 to 12).
+  answerable: true
+  gold_sql: |
+    SELECT month(start_time_local) AS month
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+    GROUP BY month(start_time_local)
+    ORDER BY sum(total_ascent_m) DESC NULLS LAST
+    LIMIT 1
+  ordered: false
+  verified: true
+  notes: Check there is no tie for the top month.
+
+- id: q033
+  category: multi_step
+  question: >-
+    Estimate my best time over 1 km, 5 km, 10 km, the half marathon (21.0975 km) and
+    the marathon (42.195 km). For each distance, take the fastest average pace (timer
+    time divided by distance) of any run at least that long, and multiply it by the
+    distance. Return the distance in km and the estimated time in minutes as a decimal
+    number, ordered by distance. Leave out a distance if no run is long enough.
+  answerable: true
+  gold_sql: |
+    SELECT d.km AS distance_km,
+           min(a.timer_time_s / a.distance_km) * d.km / 60 AS best_time_min
+    FROM (VALUES (1.0), (5.0), (10.0), (21.0975), (42.195)) AS d(km)
+    JOIN activities AS a
+      ON a.sport_group = 'running'
+     AND a.distance_km >= d.km
+    GROUP BY d.km
+    ORDER BY d.km
+  ordered: true
+  verified: true
+  notes: >-
+    This is an estimate from whole activities, not Garmin's best-effort records: the
+    table has nothing from inside an activity, so the fastest 5 km stretch within a
+    longer run cannot be found. The true best effort is equal to or faster than this
+    estimate. All five rows must match for the answer to count as correct.
