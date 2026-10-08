@@ -23,7 +23,7 @@ Done:
 - A1 complete: manual validation of six activities against Garmin Connect passed on 2026-10-06 (`docs/validation.md`). Finding: the export writes no value where Garmin Connect shows an elevation gain of 0, so NULL ascent can mean zero.
 - A2 complete: `python src/app.py "question"` prints the generated SQL and the result. Modules: `prompt.py`, `generate_sql.py` (OpenAI client, SQL extraction), `guardrails.py` (single SELECT on `activities`, checked with DuckDB's parser), `app.py` (read-only connection, no external access, timeout, row limit). Tested by the agent on a throwaway database with invented rows, and by Topias on the real data.
 - `README.md`: brief version, to be replaced by the full write-up in A8.
-- A3 complete for now: `eval/questions.yaml` (committed, public) holds 33 questions, all verified by Topias on 2026-10-07: 9 simple, 6 date logic, 5 window, 6 multi-step, 7 unanswerable. Candidates were drafted by the agent and tested on invented rows; Topias checked each against the real database. More questions can be added up to the 50 limit.
+- A3 complete for now: `eval/questions.yaml` (committed, public) holds 34 questions, all verified by Topias (33 on 2026-10-07, q034 on 2026-10-08): 9 simple, 7 date logic, 5 window, 6 multi-step, 7 unanswerable. Candidates were drafted by the agent and tested on invented rows; Topias checked each against the real database. More questions can be added up to the 50 limit.
 
 Open:
 - Everything from A4 onwards.
@@ -31,7 +31,7 @@ Open:
 - `guardrails.py` was changed on 2026-10-07 and has no automated tests yet. It now reads table names from the parsed query (`json_serialize_sql`) in place of `get_table_names`, which rejected valid queries with a `RANGE BETWEEN INTERVAL ... PRECEDING` window frame. The same change closed the earlier gap: system catalogs and table functions other than `generate_series`, `range` and `unnest` are now rejected. Checked by hand on 22 allow and reject cases and the 15 gold queries.
 - A2 has no cache for model calls yet; required from A4.
 
-Next: A4 step 3, result comparison in `eval/score.py`. A7 (synthetic data) can be built alongside.
+Next: A4 step 4, the cache for model replies. A7 (synthetic data) can be built alongside.
 
 ## Why this project
 
@@ -120,10 +120,10 @@ Metrics:
 Done when: one command runs the full eval for one configuration, writes raw results, and resumes after interruption.
 Decisions (Topias, 2026-10-08):
 - Declining: the model replies with the fixed token `CANNOT_ANSWER` in place of SQL. The harness also counts declines on answerable questions.
-- Numeric tolerance: two numbers are equal when they agree to a few decimal places. The exact rule is fixed in `eval/score.py` and documented there.
-- Column names and column order are ignored; only the values are compared. Row order counts only when the question has `ordered: true`.
+- Numeric tolerance: two numbers are equal when they agree to a few decimal places. The rule in `eval/score.py`: they differ by at most 0.001.
+- Column names and column order are ignored; only the values are compared. The number of columns must match: an extra column fails the question, and the reason is recorded so its frequency can be seen. Row order counts only when the question has `ordered: true`.
 - Time to first token is measured in A4 by streaming the reply, because cached replies cannot be timed again later.
-Build order: question loader (done 2026-10-08, `eval/load_questions.py`), frozen database snapshot (done 2026-10-08, `scripts/freeze_snapshot.py`; snapshot `data/warehouse/garmin_eval_2026-10-08.duckdb`, hash and counts in `eval/snapshot.json`), result comparison (`eval/score.py`), reply cache, run loop (`eval/run_eval.py`), metrics summary.
+Build order: question loader (done 2026-10-08, `eval/load_questions.py`), frozen database snapshot (done 2026-10-08, `scripts/freeze_snapshot.py`; snapshot `data/warehouse/garmin_eval_2026-10-08.duckdb`, hash and counts in `eval/snapshot.json`), result comparison (done 2026-10-08, `eval/score.py`), reply cache, run loop (`eval/run_eval.py`), metrics summary.
 
 ### A5. Experiments
 Vary one thing at a time against the baseline: model, schema description detail, number of few-shot examples, error-feedback retry on/off.
@@ -195,7 +195,7 @@ garmin-llm/
     load_questions.py     done
     snapshot.json         done; hash and counts of the frozen database
     run_eval.py
-    score.py
+    score.py              done
   scripts/
     bench_prompt.py       done
     freeze_snapshot.py    done

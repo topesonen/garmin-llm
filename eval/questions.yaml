@@ -531,3 +531,26 @@
     table has nothing from inside an activity, so the fastest 5 km stretch within a
     longer run cannot be found. The true best effort is equal to or faster than this
     estimate. All five rows must match for the answer to count as correct.
+
+- id: q034
+  category: date_logic
+  question: >-
+    Which week of 2025 had my highest total running distance, and what was that distance
+    in km? Weeks run Monday to Sunday. Count only weeks whose Monday falls in 2025.
+    Return the date of that Monday and the total distance.
+  answerable: true
+  gold_sql: |
+    SELECT CAST(date_trunc('week', start_time_local) AS DATE) AS week_start,
+           sum(distance_km) AS total_km
+    FROM activities
+    WHERE sport_group = 'running'
+      AND date_trunc('week', start_time_local) >= TIMESTAMP '2025-01-01'
+      AND date_trunc('week', start_time_local) < TIMESTAMP '2026-01-01'
+    GROUP BY date_trunc('week', start_time_local)
+    ORDER BY sum(distance_km) DESC
+    LIMIT 1
+  ordered: false
+  verified: true
+  notes: >-
+    Same week as q007, with the distance added. q007 expects one column and this
+    question two, so a model can pass one and fail the other.
