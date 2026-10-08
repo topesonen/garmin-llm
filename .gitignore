@@ -13,6 +13,9 @@ scratch/
 results/raw/real/
 results/processed/real/
 
+# Stored model replies; rebuilt by rerunning the eval
+results/cache/
+
 # Python
 __pycache__/
 *.pyc
