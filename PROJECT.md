@@ -29,7 +29,7 @@ Open:
 - Everything from A4 onwards.
 - `guardrails.py` was changed on 2026-10-07 and has no automated tests yet. It now reads table names from the parsed query (`json_serialize_sql`) in place of `get_table_names`, which rejected valid queries with a `RANGE BETWEEN INTERVAL ... PRECEDING` window frame. The same change closed the earlier gap: system catalogs and table functions other than `generate_series`, `range` and `unnest` are now rejected. Checked by hand on 22 allow and reject cases and the 15 gold queries.
 
-Next: A4 run loop in `eval/run_eval.py`. A7 (synthetic data) can be built alongside.
+Next: Topias runs the full eval once (`python eval/run_eval.py`), then the metrics summary. A7 (synthetic data) can be built alongside.
 
 ## Why this project
 
@@ -121,7 +121,7 @@ Decisions (Topias, 2026-10-08):
 - Numeric tolerance: two numbers are equal when they agree to a few decimal places. The rule in `eval/score.py`: they differ by at most 0.001.
 - Column names and column order are ignored; only the values are compared. The number of columns must match: an extra column fails the question, and the reason is recorded so its frequency can be seen. Row order counts only when the question has `ordered: true`.
 - Time to first token is measured in A4 by streaming the reply, because cached replies cannot be timed again later.
-Build order: question loader (done 2026-10-08, `eval/load_questions.py`), frozen database snapshot (done 2026-10-08, `scripts/freeze_snapshot.py`; snapshot `data/warehouse/garmin_eval_2026-10-08.duckdb`, hash and counts in `eval/snapshot.json`), result comparison (done 2026-10-08, `eval/score.py`), reply cache (done 2026-10-08, `eval/cache.py`, files in the gitignored `results/cache/`), generator changes (done 2026-10-08: decline instruction in `src/prompt.py`; `src/generate_sql.py` streams the reply, records time to first token and flags a decline when the extracted reply starts with the token), run loop (`eval/run_eval.py`), metrics summary.
+Build order: question loader (done 2026-10-08, `eval/load_questions.py`), frozen database snapshot (done 2026-10-08, `scripts/freeze_snapshot.py`; snapshot `data/warehouse/garmin_eval_2026-10-08.duckdb`, hash and counts in `eval/snapshot.json`), result comparison (done 2026-10-08, `eval/score.py`), reply cache (done 2026-10-08, `eval/cache.py`, files in the gitignored `results/cache/`), generator changes (done 2026-10-08: decline instruction in `src/prompt.py`; `src/generate_sql.py` streams the reply, records time to first token and flags a decline when the extracted reply starts with the token), run loop (done 2026-10-08, `eval/run_eval.py`; tested on invented rows and on three questions end to end, full run not done yet), metrics summary.
 
 ### A5. Experiments
 Vary one thing at a time against the baseline: model, schema description detail, number of few-shot examples, error-feedback retry on/off.
@@ -192,7 +192,7 @@ garmin-llm/
     questions_synthetic.yaml
     load_questions.py     done
     snapshot.json         done; hash and counts of the frozen database
-    run_eval.py
+    run_eval.py           done
     score.py              done
     cache.py              done
   scripts/

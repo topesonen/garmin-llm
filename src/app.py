@@ -24,7 +24,7 @@ DEFAULT_TIMEOUT_S = 10
 
 
 def run_query(sql, db_path=DEFAULT_DB, max_rows=DEFAULT_MAX_ROWS, timeout_s=DEFAULT_TIMEOUT_S):
-    """Run a query read-only. Returns (DataFrame, truncated)."""
+    """Run a query read-only. Returns (column names, rows, truncated)."""
     # Second guardrail layer: the connection cannot write to the database
     # and cannot read other files or the network.
     con = duckdb.connect(
@@ -44,7 +44,7 @@ def run_query(sql, db_path=DEFAULT_DB, max_rows=DEFAULT_MAX_ROWS, timeout_s=DEFA
         timer.cancel()
         con.close()
     truncated = len(rows) > max_rows
-    return pd.DataFrame(rows[:max_rows], columns=columns), truncated
+    return columns, rows[:max_rows], truncated
 
 
 def main():
@@ -69,13 +69,13 @@ def main():
         return 1
 
     try:
-        result, truncated = run_query(generated["sql"], args.db, args.max_rows, args.timeout)
+        columns, rows, truncated = run_query(generated["sql"], args.db, args.max_rows, args.timeout)
     except (duckdb.Error, TimeoutError) as error:
         print(f"Query failed: {str(error).splitlines()[0]}")
         return 1
 
     print("Result:")
-    print(result.to_string(index=False))
+    print(pd.DataFrame(rows, columns=columns).to_string(index=False))
     if truncated:
         print(f"(first {args.max_rows} rows shown)")
     return 0
