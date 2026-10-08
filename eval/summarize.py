@@ -19,10 +19,20 @@ import sys
 from collections import Counter
 from pathlib import Path
 
+import yaml
+
 from load_questions import load_questions
 
 RAW_ROOT = Path("results/raw/real")
 OUT_ROOT = Path("results/processed/summaries")
+LABEL_ROOT = Path("eval/labels")
+# The categories from the project brief, for failures on answerable questions.
+# missing_step was added by Topias on 2026-10-08: the query answers a simpler
+# question than the one asked and leaves out a step the question needs.
+ERROR_CATEGORIES = [
+    "wrong_column_or_table", "wrong_date_logic", "wrong_aggregation",
+    "wrong_units", "wrong_label_matching", "missing_step", "other",
+]  # fmt: skip
 CONFIG_FIELDS = [
     "name", "started", "finished", "model", "model_digest", "ollama_version",
     "temperature", "seed", "system_prompt_sha256", "snapshot_sha256",
@@ -45,6 +55,30 @@ def spread(values):
         "min": round(min(values), 2),
         "max": round(max(values), 2),
     }
+
+
+def error_categories(run_dir, records):
+    """Count the hand-made labels in eval/labels/<run name>.yaml, if the file exists."""
+    path = LABEL_ROOT / f"{run_dir.name}.yaml"
+    if not path.exists():
+        return None
+    labels = {entry["id"]: entry for entry in yaml.safe_load(path.read_text()) or []}
+    counts = {category: 0 for category in ERROR_CATEGORIES}
+    unlabelled = []
+    for record in records:
+        if record["correct"] or not record["answerable"]:
+            continue
+        label = labels.get(record["id"], {})
+        category = label.get("category")
+        # A label made for other SQL than the model's current reply no longer applies.
+        current = (label.get("model_sql") or "").strip() == record["sql"].strip()
+        if category is None or not current:
+            unlabelled.append(record["id"])
+        elif category not in counts:
+            raise SystemExit(f"{path}: {record['id']} has unknown category {category!r}")
+        else:
+            counts[category] += 1
+    return {"counts": counts, "unlabelled": unlabelled}
 
 
 def summarize(run_dir):
@@ -91,6 +125,7 @@ def summarize(run_dir):
             category: share(counts["count"], counts["of"]) for category, counts in by_category.items()
         },
         "verdicts": dict(Counter(record["verdict"] for record in records).most_common()),
+        "error_categories": error_categories(run_dir, records),
         "performance": {
             "ttft_s": spread([record["ttft_s"] for record in records]),
             "latency_s": spread([record["latency_s"] for record in records]),
@@ -132,6 +167,13 @@ def write_summary(run_dir):
     print("verdicts")
     for verdict, count in summary["verdicts"].items():
         print(f"  {verdict:<28} {count:>2}")
+    labels = summary["error_categories"]
+    if labels:
+        print("error categories (failures on answerable questions, labelled by hand)")
+        for category, count in labels["counts"].items():
+            print(f"  {category:<28} {count:>2}")
+        if labels["unlabelled"]:
+            print(f"  {'not labelled yet':<28} {len(labels['unlabelled']):>2}")
     print("performance (median, min to max)")
     for name, value in summary["performance"].items():
         if value:

@@ -82,6 +82,18 @@
     "answered_unanswerable": 3,
     "rejected": 2
   },
+  "error_categories": {
+    "counts": {
+      "wrong_column_or_table": 1,
+      "wrong_date_logic": 3,
+      "wrong_aggregation": 5,
+      "wrong_units": 0,
+      "wrong_label_matching": 0,
+      "missing_step": 6,
+      "other": 2
+    },
+    "unlabelled": []
+  },
   "performance": {
     "ttft_s": {
       "median": 0.66,

@@ -28,12 +28,11 @@ Done:
 
 Open:
 - Everything from A5 onwards.
-- Error categories for the failures of the first run are not labelled yet (manual, A4 metric).
 - Timing: two requests in the first run took 14 to 16 s to the first token (one at the start of each of two sessions, when the model or its prompt cache was not loaded); the rest took 0.4 to 2.1 s. Report medians, and decide how cold starts are handled before comparing latency between models.
 - Rerunning a configuration rewrites its `run.json`, so `started`, `finished` and `git_commit` describe the latest rerun, not when the model replies were generated. The first run's replies date from 2026-10-08; its `run.json` was rewritten by a rerun from the cache on the same day.
 - `guardrails.py` was changed on 2026-10-07 and has no automated tests yet. It now reads table names from the parsed query (`json_serialize_sql`) in place of `get_table_names`, which rejected valid queries with a `RANGE BETWEEN INTERVAL ... PRECEDING` window frame. The same change closed the earlier gap: system catalogs and table functions other than `generate_series`, `range` and `unnest` are now rejected. Checked by hand on 22 allow and reject cases and the 15 gold queries.
 
-Next: label error categories for the first run, then A5 (experiments). Topias decides the generator models and which change to try first; the 0 of 7 on unanswerable questions is the clearest target. A7 (synthetic data) can be built alongside.
+Next: A5 (experiments). Topias decides the generator models and which change to try first; the 0 of 7 on unanswerable questions is the clearest target. A7 (synthetic data) can be built alongside.
 
 ## Why this project
 
@@ -116,7 +115,7 @@ Status: done for now 2026-10-07 with 33 verified questions. Each row has `id`, `
 Metrics:
 - **Execution accuracy:** generated SQL returns the same result set as the gold SQL (order-insensitive unless the question requires ordering; numeric tolerance documented).
 - **Valid SQL rate:** share of queries that parse and run.
-- **Error categories:** wrong column/table, wrong date logic, wrong aggregation, wrong units, wrong label matching, other. Labelled manually for failures.
+- **Error categories:** wrong column/table, wrong date logic, wrong aggregation, wrong units, wrong label matching, missing step, other. Labelled manually for failures on answerable questions, in `eval/labels/<run>.yaml` (sheet made by `eval/make_label_sheet.py`). "Missing step" was added by Topias on 2026-10-08 for queries that answer a simpler question than the one asked.
 - **Unanswerable handling:** share of unanswerable questions correctly declined.
 - **Performance:** time to first token, total latency, tokens/s per model.
 Done when: one command runs the full eval for one configuration, writes raw results, and resumes after interruption.
@@ -126,7 +125,7 @@ Decisions (Topias, 2026-10-08):
 - Column names and column order are ignored; only the values are compared. The number of columns must match: an extra column fails the question, and the reason is recorded so its frequency can be seen. Row order counts only when the question has `ordered: true`.
 - Time to first token is measured in A4 by streaming the reply, because cached replies cannot be timed again later.
 Build order: question loader (done 2026-10-08, `eval/load_questions.py`), frozen database snapshot (done 2026-10-08, `scripts/freeze_snapshot.py`; snapshot `data/warehouse/garmin_eval_2026-10-08.duckdb`, hash and counts in `eval/snapshot.json`), result comparison (done 2026-10-08, `eval/score.py`), reply cache (done 2026-10-08, `eval/cache.py`, files in the gitignored `results/cache/`), generator changes (done 2026-10-08: decline instruction in `src/prompt.py`; `src/generate_sql.py` streams the reply, records time to first token and flags a decline when the extracted reply starts with the token), run loop (done 2026-10-08, `eval/run_eval.py`; tested on invented rows and on three questions end to end, full run by Topias on 2026-10-08), metrics summary (done 2026-10-08, `eval/summarize.py`).
-Status: done 2026-10-08, except the manual error-category labels.
+Status: done 2026-10-08. The 17 failures of the first run on answerable questions were labelled by Topias and reviewed with the agent: 6 missing step, 5 wrong aggregation, 3 wrong date logic, 1 wrong column or table, 2 other.
 
 ### A5. Experiments
 Vary one thing at a time against the baseline: model, schema description detail, number of few-shot examples, error-feedback retry on/off.
@@ -199,6 +198,8 @@ garmin-llm/
     snapshot.json         done; hash and counts of the frozen database
     run_eval.py           done
     summarize.py          done
+    make_label_sheet.py   done
+    labels/               one YAML of hand-made error labels per run, committed
     score.py              done
     cache.py              done
   scripts/
@@ -243,4 +244,4 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-05 | A0 | `qwen2.5-coder:1.5b` pulled and digest recorded; `scripts/bench_prompt.py` written and run 5 times (about 15 generated tokens/s, 21.8 s cold request); OpenAI-compatible endpoint confirmed; `docs/environment.md` written. Found: output text differs between cold and cached runs at temperature 0, and the model adds a code fence or prose around the SQL | Topias: run manual validation (pass/fail public, values private), decide on adding `openai`. Agent: A2 baseline assistant |
 | 2026-10-06 | A1, A2 | Baseline assistant written (`prompt.py`, `generate_sql.py`, `guardrails.py`, `app.py`), `openai` 3.24.0 added; manual validation of six activities passed, with the elevation-gain NULL finding added to `data_notes.md` and `schema.md`; brief `README.md`; `scratch/` gitignored for ad hoc queries | Agent: draft candidate eval questions (A3), or start the harness (A4). Topias: verify questions and gold SQL |
 | 2026-10-07 | A3 | Eval set written and verified: 33 questions in `eval/questions.yaml` (format changed from JSONL to YAML); label-based questions dropped; pace questions use minutes per km; `guardrails.py` rewritten to read table names from the parsed query after it rejected a valid `RANGE BETWEEN INTERVAL` window, which also closed the system-catalog gap; `eval/questions.yaml` made public by Topias' decision | Topias: decide how the model declines, and the numeric tolerance. Agent: A4 harness, add PyYAML, freeze a database snapshot |
-| 2026-10-08 | A3, A4 | q034 added and verified (34 questions); A4 built in steps: question loader, frozen snapshot, result comparison, reply cache, decline token and streaming in the generator, run loop, metrics summary; decisions on declining, tolerance, columns and timing recorded under A4; first full run of `qwen2.5-coder:1.5b`: 10 of 34 correct | Topias: choose generator models and the first A5 experiment. Agent: label error categories with Topias, then A5 configs |
+| 2026-10-08 | A3, A4 | q034 added and verified (34 questions); A4 built in steps: question loader, frozen snapshot, result comparison, reply cache, decline token and streaming in the generator, run loop, metrics summary; decisions on declining, tolerance, columns and timing recorded under A4; first full run of `qwen2.5-coder:1.5b`: 10 of 34 correct | Topias: choose generator models and the first A5 experiment. Agent: A5 configs. Error categories for the first run were labelled the same day |
