@@ -10,6 +10,8 @@ model only for what is missing and scores everything again.
 Output: results/raw/real/<run name>/run.json with the configuration, and one
         <question id>.json per question. These files hold values from the
         real data and are gitignored. The screen shows verdicts only.
+        At the end the run is summarized by summarize.py, which writes the
+        aggregate metrics to results/processed/summaries/<run name>.json.
 
 Usage:
     python eval/run_eval.py [--model TAG] [--ids q001 q002 ...] [--name NAME]
@@ -21,7 +23,6 @@ import json
 import subprocess
 import sys
 import urllib.request
-from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -35,6 +36,7 @@ from generate_sql import BASE_URL, MODEL, build_request, extract_sql, is_decline
 from guardrails import check_sql
 from load_questions import DEFAULT_QUESTIONS, load_questions
 from score import ABS_TOLERANCE, compare_results
+from summarize import write_summary
 
 SNAPSHOT_MANIFEST = Path("eval/snapshot.json")
 OUT_ROOT = Path("results/raw/real")
@@ -185,7 +187,6 @@ def main():
     write_json(out_dir / "run.json", run)
     print(f"run {name}: {len(questions)} questions, results in {out_dir}")
 
-    verdicts = Counter()
     for question in questions:
         request = build_request(question["question"], args.model)
         # The digest is part of the key: the same tag can point to a new model version.
@@ -207,7 +208,6 @@ def main():
             **response,
         }
         write_json(out_dir / f"{question['id']}.json", record)
-        verdicts[scored["verdict"]] += 1
         # An error message can quote a value from the data, so only its type is shown.
         shown = scored["detail"].split(":")[0] if scored["verdict"] == "sql_error" else scored["detail"]
         source = "cache" if from_cache else "model"
@@ -218,10 +218,9 @@ def main():
 
     run["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     write_json(out_dir / "run.json", run)
-    correct = sum(count for verdict, count in verdicts.items() if verdict in CORRECT_VERDICTS)
-    print(f"correct: {correct} of {len(questions)}")
-    for verdict, count in verdicts.most_common():
-        print(f"  {verdict}: {count}")
+    print()
+    # The summary covers every result file in the run folder, also from earlier partial runs.
+    write_summary(out_dir)
 
 
 if __name__ == "__main__":
