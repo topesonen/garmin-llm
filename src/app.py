@@ -56,6 +56,9 @@ def main():
     args = parser.parse_args()
 
     generated = generate_sql(args.question)
+    if generated["declined"]:
+        print(f"The model says this cannot be answered from the data ({generated['model']}).")
+        return 0
     print(f"SQL ({generated['model']}, {generated['latency_s']:.1f} s):")
     print(generated["sql"])
     print()

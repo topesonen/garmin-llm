@@ -13,12 +13,17 @@ from pathlib import Path
 
 DEFAULT_SCHEMA = Path("docs/schema.md")
 
+# What the model replies in place of SQL when the table cannot answer the question.
+DECLINE_TOKEN = "CANNOT_ANSWER"
+
 INSTRUCTIONS = (
     "You translate questions about a person's training activities into SQL "
     "for DuckDB.\n"
     "Reply with exactly one SELECT query and nothing else: no explanation, "
     "no Markdown.\n"
-    "Use only the table and columns described below."
+    "Use only the table and columns described below.\n"
+    "If the question cannot be answered from that table, reply with exactly "
+    f"{DECLINE_TOKEN} and nothing else."
 )
 
 
