@@ -8,7 +8,7 @@ Two phases:
 
 The application talks to the model only through the OpenAI-compatible API, so switching from Ollama to vLLM is a config change, not a rewrite.
 
-## Current status (2026-10-07)
+## Current status (2026-10-08)
 
 Done:
 - Data source: Garmin Connect activities CSV export (`Activities.csv`), stored in `data/raw/` (gitignored).
@@ -27,14 +27,11 @@ Done:
 
 Open:
 - Everything from A4 onwards.
-- No frozen snapshot of the database exists yet. A3 requires gold answers to be computed on one; to be made in A4 before the first eval run.
-- The prompt in `src/prompt.py` gives the model no way to decline: it asks for exactly one SELECT and nothing else. The 7 unanswerable questions cannot be scored until Topias decides how a decline is signalled and detected (prompt change, his decision).
-- PyYAML is needed to read `eval/questions.yaml` and is not in `requirements.txt` or the venv yet.
-- Harness comparison rules to settle in A4: numeric tolerance, and comparing values across numeric types (q033 returns its distance column as DECIMAL).
+- The decline token is decided (see A4) but not built: the prompt in `src/prompt.py` still asks for exactly one SELECT and nothing else.
 - `guardrails.py` was changed on 2026-10-07 and has no automated tests yet. It now reads table names from the parsed query (`json_serialize_sql`) in place of `get_table_names`, which rejected valid queries with a `RANGE BETWEEN INTERVAL ... PRECEDING` window frame. The same change closed the earlier gap: system catalogs and table functions other than `generate_series`, `range` and `unnest` are now rejected. Checked by hand on 22 allow and reject cases and the 15 gold queries.
 - A2 has no cache for model calls yet; required from A4.
 
-Next session: A4 (evaluation harness). First decisions for Topias: how the model declines an unanswerable question, and the numeric tolerance. A7 (synthetic data) can be built alongside.
+Next: A4 step 3, result comparison in `eval/score.py`. A7 (synthetic data) can be built alongside.
 
 ## Why this project
 
@@ -73,7 +70,7 @@ Implications:
 
 ## Stack
 
-- Python, pinned dependencies in `requirements.txt` (currently duckdb, openai, pandas).
+- Python, pinned dependencies in `requirements.txt` (currently duckdb, openai, pandas, PyYAML).
 - DuckDB as the warehouse (`data/warehouse/garmin.duckdb`).
 - Ollama for generation, accessed through the OpenAI Python client and the Ollama OpenAI-compatible endpoint. Check the current Ollama docs for supported endpoints before relying on them.
 
@@ -121,6 +118,12 @@ Metrics:
 - **Unanswerable handling:** share of unanswerable questions correctly declined.
 - **Performance:** time to first token, total latency, tokens/s per model.
 Done when: one command runs the full eval for one configuration, writes raw results, and resumes after interruption.
+Decisions (Topias, 2026-10-08):
+- Declining: the model replies with the fixed token `CANNOT_ANSWER` in place of SQL. The harness also counts declines on answerable questions.
+- Numeric tolerance: two numbers are equal when they agree to a few decimal places. The exact rule is fixed in `eval/score.py` and documented there.
+- Column names and column order are ignored; only the values are compared. Row order counts only when the question has `ordered: true`.
+- Time to first token is measured in A4 by streaming the reply, because cached replies cannot be timed again later.
+Build order: question loader (done 2026-10-08, `eval/load_questions.py`), frozen database snapshot (done 2026-10-08, `scripts/freeze_snapshot.py`; snapshot `data/warehouse/garmin_eval_2026-10-08.duckdb`, hash and counts in `eval/snapshot.json`), result comparison (`eval/score.py`), reply cache, run loop (`eval/run_eval.py`), metrics summary.
 
 ### A5. Experiments
 Vary one thing at a time against the baseline: model, schema description detail, number of few-shot examples, error-feedback retry on/off.
@@ -189,10 +192,13 @@ garmin-llm/
   eval/
     questions.yaml        done; questions and gold SQL only, no answers
     questions_synthetic.yaml
+    load_questions.py     done
+    snapshot.json         done; hash and counts of the frozen database
     run_eval.py
     score.py
   scripts/
     bench_prompt.py       done
+    freeze_snapshot.py    done
     make_synthetic.py
   results/raw/
     environment/          A0 benchmark runs, committed

@@ -1,0 +1,10 @@
+{
+  "snapshot": "data/warehouse/garmin_eval_2026-10-08.duckdb",
+  "source": "data/warehouse/garmin.duckdb",
+  "created": "2026-10-08",
+  "sha256": "cf04b1e90e6c8bfbf9ce9dc0a7a4fdf6fd2fae0e6124b64ce44144245f4bbea2",
+  "duckdb_version": "1.5.6",
+  "activities_rows": 546,
+  "first_activity": "2024-02-28",
+  "last_activity": "2026-10-01"
+}
