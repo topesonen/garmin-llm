@@ -2,14 +2,17 @@
 
 The system message holds the instructions and the schema in docs/schema.md.
 It is identical for every question, so the model server can reuse its cached
-evaluation of it. The question goes last, in the user message.
+evaluation of it. Worked examples, if any, follow as earlier turns of the
+conversation. The question goes last, in the user message.
 
 Usage:
-    python src/prompt.py "How many runs did I do in 2025?"
+    python src/prompt.py "How many runs did I do in 2025?" [EXAMPLES_YAML]
 """
 
 import sys
 from pathlib import Path
+
+import yaml
 
 DEFAULT_SCHEMA = Path("docs/schema.md")
 
@@ -27,16 +30,26 @@ INSTRUCTIONS = (
 )
 
 
-def build_messages(question, schema_path=DEFAULT_SCHEMA):
+def load_examples(path):
+    """Return the worked examples in a YAML file as a list of (question, sql)."""
+    entries = yaml.safe_load(Path(path).read_text())
+    return [(entry["question"].strip(), entry["sql"].strip()) for entry in entries]
+
+
+def build_messages(question, schema_path=DEFAULT_SCHEMA, examples=()):
     """Return the messages list for the OpenAI-compatible chat endpoint."""
     schema = Path(schema_path).read_text().strip()
-    return [
-        {"role": "system", "content": f"{INSTRUCTIONS}\n\n{schema}"},
-        {"role": "user", "content": question.strip()},
-    ]
+    messages = [{"role": "system", "content": f"{INSTRUCTIONS}\n\n{schema}"}]
+    # Each example looks like a question the model already answered correctly.
+    for example_question, example_sql in examples:
+        messages.append({"role": "user", "content": example_question})
+        messages.append({"role": "assistant", "content": example_sql})
+    messages.append({"role": "user", "content": question.strip()})
+    return messages
 
 
 if __name__ == "__main__":
-    for message in build_messages(sys.argv[1]):
+    examples = load_examples(sys.argv[2]) if len(sys.argv) > 2 else ()
+    for message in build_messages(sys.argv[1], examples=examples):
         print(f"--- {message['role']} ({len(message['content'])} chars)")
         print(message["content"])

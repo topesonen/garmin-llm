@@ -35,7 +35,7 @@ ERROR_CATEGORIES = [
 ]  # fmt: skip
 CONFIG_FIELDS = [
     "name", "started", "finished", "model", "model_digest", "ollama_version",
-    "temperature", "seed", "system_prompt_sha256", "snapshot_sha256",
+    "temperature", "seed", "system_prompt_sha256", "examples_file", "examples_sha256", "snapshot_sha256",
     "questions_sha256", "abs_tolerance", "git_commit", "git_uncommitted_changes",
 ]  # fmt: skip
 

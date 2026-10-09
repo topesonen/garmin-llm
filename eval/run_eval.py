@@ -14,7 +14,7 @@ Output: results/raw/real/<run name>/run.json with the configuration, and one
         aggregate metrics to results/processed/summaries/<run name>.json.
 
 Usage:
-    python eval/run_eval.py [--model TAG] [--ids q001 q002 ...] [--name NAME]
+    python eval/run_eval.py [--model TAG] [--examples YAML] [--ids q001 q002 ...] [--name NAME]
 """
 
 import argparse
@@ -35,6 +35,7 @@ from cache import DEFAULT_CACHE_DIR, cached_call
 from generate_sql import BASE_URL, MODEL, build_request, extract_sql, is_decline, send
 from guardrails import check_sql
 from load_questions import DEFAULT_QUESTIONS, load_questions
+from prompt import load_examples
 from score import ABS_TOLERANCE, compare_results
 from summarize import write_summary
 
@@ -129,6 +130,7 @@ def main():
     parser.add_argument("--model", default=MODEL)
     parser.add_argument("--base-url", default=BASE_URL)
     parser.add_argument("--questions", type=Path, default=DEFAULT_QUESTIONS)
+    parser.add_argument("--examples", type=Path, help="YAML file of worked examples to put in the prompt")
     parser.add_argument("--ids", nargs="+", help="run only these question ids")
     parser.add_argument("--name", help="run name; default is the model plus a hash of the configuration")
     args = parser.parse_args()
@@ -148,6 +150,11 @@ def main():
     if actual_hash != snapshot["sha256"]:
         raise SystemExit(f"{snapshot['snapshot']} does not match the hash in {SNAPSHOT_MANIFEST}")
 
+    examples = load_examples(args.examples) if args.examples else ()
+    overlap = {text for text, _ in examples} & {q["question"].strip() for q in load_questions(args.questions)}
+    if overlap:
+        raise SystemExit(f"{args.examples} repeats an eval question: {sorted(overlap)[0]}")
+
     ollama_version, model_digest = ollama_info(args.base_url, args.model)
     example = build_request("", args.model)
     system_prompt = example["messages"][0]["content"]
@@ -160,6 +167,9 @@ def main():
         "system_prompt_sha256": sha256_text(system_prompt),
         "snapshot_sha256": snapshot["sha256"],
     }
+    # Added only when examples are used, so runs without them keep their name.
+    if args.examples:
+        config["examples_sha256"] = sha256_text(json.dumps(examples))
     name = args.name or f"{args.model.replace(':', '_').replace('/', '_')}-{sha256_text(json.dumps(config, sort_keys=True))[:8]}"
     out_dir = OUT_ROOT / name
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -173,6 +183,8 @@ def main():
         "base_url": args.base_url,
         "ollama_version": ollama_version,
         "system_prompt": system_prompt,
+        "examples_file": str(args.examples) if args.examples else None,
+        "examples": [{"question": text, "sql": sql} for text, sql in examples],
         "snapshot": snapshot["snapshot"],
         "questions_file": str(args.questions),
         "questions_sha256": sha256_text(args.questions.read_text()),
@@ -188,7 +200,7 @@ def main():
     print(f"run {name}: {len(questions)} questions, results in {out_dir}")
 
     for question in questions:
-        request = build_request(question["question"], args.model)
+        request = build_request(question["question"], args.model, examples)
         # The digest is part of the key: the same tag can point to a new model version.
         key = {"request": request, "model_digest": model_digest}
         response, from_cache = cached_call(

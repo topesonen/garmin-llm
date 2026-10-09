@@ -1,0 +1,37 @@
+# Worked examples shown to the model before the question (few-shot prompting).
+# Each one is sent as a user turn (the question) and an assistant turn (the SQL).
+#
+# Rules for this file:
+# - No eval question, and no close copy of one: the eval must measure whether
+#   the model can apply a pattern, not whether it can copy an answer.
+# - No value from the real data.
+# - Every query must pass the guardrail and run on the activities table.
+
+- question: What is the highest number of cycling activities I have done in a single calendar month?
+  sql: |
+    SELECT max(activity_count)
+    FROM (
+      SELECT count(*) AS activity_count
+      FROM activities
+      WHERE sport_group = 'cycling'
+      GROUP BY date_trunc('month', start_time_local)
+    )
+
+- question: What is the largest rise in average heart rate from one strength training session to the next, in beats per minute?
+  sql: |
+    SELECT max(hr_change)
+    FROM (
+      SELECT avg_hr_bpm - lag(avg_hr_bpm) OVER (ORDER BY start_time_local) AS hr_change
+      FROM activities
+      WHERE sport_group = 'strength'
+    )
+
+- question: How many cardio activities did I do in each month of 2025? Return the month number (1 to 12) and the number of cardio activities, ordered by month.
+  sql: |
+    SELECT month(start_time_local) AS month, count(*) AS cardio_count
+    FROM activities
+    WHERE sport_group = 'cardio'
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+    GROUP BY month(start_time_local)
+    ORDER BY month(start_time_local)

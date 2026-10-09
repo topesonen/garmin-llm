@@ -37,11 +37,11 @@ def is_decline(sql):
     return sql.upper().startswith(DECLINE_TOKEN)
 
 
-def build_request(question, model=MODEL):
+def build_request(question, model=MODEL, examples=()):
     """Return everything that determines the reply; also the key for caching it."""
     return {
         "model": model,
-        "messages": build_messages(question),
+        "messages": build_messages(question, examples=examples),
         "temperature": 0,
         "seed": 0,
     }
