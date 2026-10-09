@@ -29,6 +29,14 @@ INSTRUCTIONS = (
     f"{DECLINE_TOKEN} and nothing else."
 )
 
+# Sent after a query that the guardrail or DuckDB refused, for one more attempt.
+# The first version also offered the decline token here. The model then gave
+# up on 3 of 6 retried questions, all answerable (run qwen2.5-coder_7b-abc924b9).
+RETRY_TEMPLATE = (
+    "That query failed with this error:\n{error}\n"
+    "Fix the query. Reply with the corrected query and nothing else."
+)
+
 
 def load_examples(path):
     """Return the worked examples in a YAML file as a list of (question, sql)."""
@@ -46,6 +54,14 @@ def build_messages(question, schema_path=DEFAULT_SCHEMA, examples=()):
         messages.append({"role": "assistant", "content": example_sql})
     messages.append({"role": "user", "content": question.strip()})
     return messages
+
+
+def build_retry_messages(messages, reply, error):
+    """Return the conversation continued with the failed reply and its error."""
+    return messages + [
+        {"role": "assistant", "content": reply},
+        {"role": "user", "content": RETRY_TEMPLATE.format(error=error)},
+    ]
 
 
 if __name__ == "__main__":

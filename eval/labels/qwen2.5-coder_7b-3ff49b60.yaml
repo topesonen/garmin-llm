@@ -1,0 +1,279 @@
+# Error labels for run qwen2.5-coder_7b-3ff49b60. Filled in by hand.
+# category is one of: wrong_column_or_table, wrong_date_logic, wrong_aggregation, wrong_units, wrong_label_matching, missing_step, other
+# With several mistakes, pick the most specific category that fits and put the rest
+# in note. Use other only when no single fix would make the query right.
+
+- id: q008
+  verdict: rejected
+  detail: "must read only the activities table, found: none"
+  question: >-
+    How many more km did I run from January to June 2026 than from January to June 2025? A negative number means I ran less in 2026.
+  gold_sql: |
+    SELECT
+      sum(CASE WHEN start_time_local >= TIMESTAMP '2026-01-01'
+                AND start_time_local < TIMESTAMP '2026-07-01' THEN distance_km END)
+      - sum(CASE WHEN start_time_local >= TIMESTAMP '2025-01-01'
+                  AND start_time_local < TIMESTAMP '2025-07-01' THEN distance_km END)
+      AS km_difference
+    FROM activities
+    WHERE sport_group = 'running'
+  model_sql: |
+    SELECT (sum(distance_km) FILTER (WHERE start_time_local >= TIMESTAMP '2026-01-01' AND start_time_local < TIMESTAMP '2026-07-01')) -
+           (sum(distance_km) FILTER (WHERE start_time_local >= TIMESTAMP '2025-01-01' AND start_time_local < TIMESTAMP '2025-07-01')) AS km_difference
+  category: wrong_column_or_table
+  note: "No FROM clause and no running filter; the two date ranges and the subtraction are right. Second attempt: the retry returned the same query, the guardrail message did not say that FROM was missing."
+
+- id: q012
+  verdict: wrong_result
+  detail: "values differ"
+  question: >-
+    For each month of 2025 in which I ran, what was my cumulative running distance in km from the start of 2025 to the end of that month? Return the month number (1 to 12) and the cumulative total, ordered by month.
+  gold_sql: |
+    SELECT month(start_time_local) AS month,
+           sum(sum(distance_km)) OVER (ORDER BY month(start_time_local)) AS cumulative_km
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+    GROUP BY month(start_time_local)
+    ORDER BY month(start_time_local)
+  model_sql: |
+    SELECT month(start_time_local) AS month, sum(distance_km) AS cumulative_distance_km
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+    GROUP BY month(start_time_local)
+    ORDER BY month(start_time_local)
+  category: missing_step
+  note: "Computes the sum for each month and names it cumulative, but never accumulates it."
+
+- id: q013
+  verdict: wrong_result
+  detail: "row count differs: gold 3, model 1"
+  question: >-
+    For each calendar year, on what date did I do my longest run by distance? Return the year and the date, ordered by year.
+  gold_sql: |
+    SELECT year(start_time_local) AS year, CAST(start_time_local AS DATE) AS run_date
+    FROM activities
+    WHERE sport_group = 'running'
+    QUALIFY row_number() OVER (
+      PARTITION BY year(start_time_local) ORDER BY distance_km DESC NULLS LAST
+    ) = 1
+    ORDER BY year
+  model_sql: |
+    SELECT date_trunc('year', start_time_local) AS year, start_time_local AS longest_run_date
+    FROM activities
+    WHERE sport_group = 'running'
+      AND distance_km IS NOT NULL
+    ORDER BY year, distance_km DESC
+    LIMIT 1
+  category: missing_step
+  note: "Returns a single row, the longest run of the whole period, in place of the longest per year. Year and date are also returned as timestamps."
+
+- id: q014
+  verdict: rejected
+  detail: "does not parse: Parser Error: syntax error at or near \"WINDOW\""
+  question: >-
+    What is the highest total running distance in km that I have covered in any period of 7 consecutive calendar days?
+  gold_sql: |
+    SELECT max(km_7d)
+    FROM (
+      SELECT sum(distance_km) OVER (
+               ORDER BY CAST(start_time_local AS DATE)
+               RANGE BETWEEN INTERVAL 6 DAY PRECEDING AND CURRENT ROW
+             ) AS km_7d
+      FROM activities
+      WHERE sport_group = 'running'
+    )
+  model_sql: |
+    SELECT max(total_distance)
+    FROM (
+      SELECT sum(distance_km) AS total_distance
+      FROM activities
+      WHERE sport_group = 'running'
+      GROUP BY date_trunc('day', start_time_local)
+      ORDER BY date_trunc('day', start_time_local)
+      WINDOW w AS (ORDER BY date_trunc('day', start_time_local) ROWS BETWEEN 6 PRECEDING AND CURRENT ROW)
+    )
+  category: missing_step
+  note: "Daily sums only. A WINDOW clause is written after ORDER BY, where it does not parse, and nothing uses it. Its frame counts 6 rows back, which is days with a run, not calendar days. Second attempt: the retry returned the same query."
+
+- id: q015
+  verdict: wrong_result
+  detail: "values differ"
+  question: >-
+    What is my longest streak of consecutive calendar days with at least one run? Answer with the number of days.
+  gold_sql: |
+    WITH run_days AS (
+      SELECT DISTINCT CAST(start_time_local AS DATE) AS d
+      FROM activities
+      WHERE sport_group = 'running'
+    ),
+    grouped AS (
+      SELECT d, d - CAST(row_number() OVER (ORDER BY d) AS INTEGER) AS streak_key
+      FROM run_days
+    )
+    SELECT max(streak_days)
+    FROM (SELECT count(*) AS streak_days FROM grouped GROUP BY streak_key)
+  model_sql: |
+    SELECT max(streak) AS longest_streak
+    FROM (
+      SELECT sum(CASE WHEN sport_group = 'running' THEN 1 ELSE 0 END) AS streak
+      FROM (
+        SELECT sport_group,
+               start_time_local,
+               lag(sport_group) OVER (ORDER BY start_time_local) AS prev_sport_group,
+               lag(start_time_local) OVER (ORDER BY start_time_local) AS prev_start_time_local
+        FROM activities
+      )
+      WHERE sport_group = 'running'
+        OR (prev_sport_group = 'running' AND start_time_local - prev_start_time_local <= INTERVAL '1 day')
+      GROUP BY start_time_local
+    )
+  category: missing_step
+  note: "Uses LAG to look at the previous activity, but never groups consecutive days into streaks; it groups by exact start time."
+
+- id: q017
+  verdict: wrong_result
+  detail: "values differ"
+  question: >-
+    In how many calendar months did I run more km in 2025 than in the same month of 2024? Count only months in which I ran in both years.
+  gold_sql: |
+    WITH monthly AS (
+      SELECT year(start_time_local) AS year, month(start_time_local) AS month,
+             sum(distance_km) AS km
+      FROM activities
+      WHERE sport_group = 'running'
+        AND start_time_local >= TIMESTAMP '2024-01-01'
+        AND start_time_local < TIMESTAMP '2026-01-01'
+      GROUP BY year(start_time_local), month(start_time_local)
+    )
+    SELECT count(*)
+    FROM monthly AS y2025
+    JOIN monthly AS y2024 ON y2025.month = y2024.month
+    WHERE y2025.year = 2025
+      AND y2024.year = 2024
+      AND y2025.km > y2024.km
+  model_sql: |
+    SELECT count(*)
+    FROM (
+      SELECT month(start_time_local) AS month
+      FROM activities
+      WHERE sport_group = 'running'
+        AND start_time_local >= TIMESTAMP '2024-01-01'
+        AND start_time_local < TIMESTAMP '2025-01-01'
+      GROUP BY month(start_time_local)
+    ) AS subquery
+    WHERE subquery.month IN (
+      SELECT month(start_time_local)
+      FROM activities
+      WHERE sport_group = 'running'
+        AND month(start_time_local) = subquery.month
+        AND start_time_local >= TIMESTAMP '2023-01-01'
+        AND start_time_local < TIMESTAMP '2024-01-01'
+      GROUP BY month(start_time_local)
+      HAVING sum(distance_km) < (
+        SELECT sum(distance_km)
+        FROM activities
+        WHERE sport_group = 'running'
+          AND month(start_time_local) = subquery.month
+          AND start_time_local >= TIMESTAMP '2024-01-01'
+          AND start_time_local < TIMESTAMP '2025-01-01'
+      )
+    )
+  category: wrong_date_logic
+  note: "Second attempt, after a binder error. Compares 2024 with 2023 where 2025 and 2024 were asked. The per-month comparison itself is in place."
+
+- id: q019
+  verdict: wrong_result
+  detail: "values differ"
+  question: >-
+    On how many calendar days have I recorded both a run and a strength training session?
+  gold_sql: |
+    SELECT count(*)
+    FROM (
+      SELECT CAST(start_time_local AS DATE) AS day
+      FROM activities
+      WHERE sport_group IN ('running', 'strength')
+      GROUP BY CAST(start_time_local AS DATE)
+      HAVING count(DISTINCT sport_group) = 2
+    )
+  model_sql: |
+    SELECT count(DISTINCT date_trunc('day', start_time_local))
+    FROM activities
+    WHERE sport_group IN ('running', 'strength')
+  category: missing_step
+  note: "Counts days with a run or a strength session. The condition that the day has both is missing."
+
+- id: q020
+  verdict: wrong_result
+  detail: "values differ"
+  question: >-
+    How many of my runs were longer in distance than the average distance of all my runs in the same calendar year?
+  gold_sql: |
+    SELECT count(*)
+    FROM (
+      SELECT distance_km,
+             avg(distance_km) OVER (PARTITION BY year(start_time_local)) AS year_avg_km
+      FROM activities
+      WHERE sport_group = 'running'
+    )
+    WHERE distance_km > year_avg_km
+  model_sql: |
+    SELECT count(*)
+    FROM activities
+    WHERE sport_group = 'running'
+      AND distance_km > (
+        SELECT avg(distance_km)
+        FROM activities
+        WHERE sport_group = 'running'
+          AND date_trunc('year', start_time_local) = date_trunc('year', current_date)
+      )
+  category: wrong_date_logic
+  note: "Compares every run with the average of the current year (current_date) in place of the average of the run's own year."
+
+- id: q031
+  verdict: wrong_result
+  detail: "values differ"
+  question: >-
+    What is the highest elevation gain per km of any run of 5 km or longer, in metres of gain per km?
+  gold_sql: |
+    SELECT max(total_ascent_m / distance_km) AS gain_m_per_km
+    FROM activities
+    WHERE sport_group = 'running'
+      AND distance_km >= 5
+  model_sql: |
+    SELECT max(elevation_gain_per_km)
+    FROM (
+      SELECT total_ascent_m / (distance_km / 1000) AS elevation_gain_per_km
+      FROM activities
+      WHERE sport_group = 'running' AND distance_km >= 5
+    )
+  category: wrong_units
+  note: "Divides distance_km by 1000 as if it were in metres. Otherwise right."
+
+- id: q033
+  verdict: wrong_result
+  detail: "row count differs: gold 5, model 1"
+  question: >-
+    Estimate my best time over 1 km, 5 km, 10 km, the half marathon (21.0975 km) and the marathon (42.195 km). For each distance, take the fastest average pace (timer time divided by distance) of any run at least that long, and multiply it by the distance. Return the distance in km and the estimated time in minutes as a decimal number, ordered by distance. Leave out a distance if no run is long enough.
+  gold_sql: |
+    SELECT d.km AS distance_km,
+           min(a.timer_time_s / a.distance_km) * d.km / 60 AS best_time_min
+    FROM (VALUES (1.0), (5.0), (10.0), (21.0975), (42.195)) AS d(km)
+    JOIN activities AS a
+      ON a.sport_group = 'running'
+     AND a.distance_km >= d.km
+    GROUP BY d.km
+    ORDER BY d.km
+  model_sql: |
+    SELECT distance_km, min(avg_pace_s_per_km) * distance_km AS estimated_time_minutes
+    FROM activities
+    WHERE sport_group = 'running'
+      AND distance_km IN (1, 5, 10, 21.0975, 42.195)
+      AND avg_pace_s_per_km IS NOT NULL
+    GROUP BY distance_km
+    ORDER BY distance_km
+  category: other
+  note: "Second attempt, after a binder error. Keeps only runs whose distance equals one of the five targets exactly, in place of runs at least that long, and multiplies the pace by the run's own distance. Result is in seconds, not minutes."

@@ -35,7 +35,8 @@ ERROR_CATEGORIES = [
 ]  # fmt: skip
 CONFIG_FIELDS = [
     "name", "started", "finished", "model", "model_digest", "ollama_version",
-    "temperature", "seed", "system_prompt_sha256", "examples_file", "examples_sha256", "snapshot_sha256",
+    "temperature", "seed", "system_prompt_sha256", "examples_file", "examples_sha256", "retry", "retry_prompt_sha256",
+    "snapshot_sha256",
     "questions_sha256", "abs_tolerance", "git_commit", "git_uncommitted_changes",
 ]  # fmt: skip
 
@@ -98,12 +99,15 @@ def summarize(run_dir):
         counts["count"] += record["correct"]
 
     # Tokens per second while generating: the time before the first token is left out.
+    # A question with a retry has two model calls, each measured on its own.
+    calls = [call for record in records for call in record.get("calls") or [record]]
     speeds = [
-        record["completion_tokens"] / (record["latency_s"] - record["ttft_s"])
-        for record in records
-        if record["completion_tokens"] and record["ttft_s"] is not None
-        and record["latency_s"] > record["ttft_s"]
+        call["completion_tokens"] / (call["latency_s"] - call["ttft_s"])
+        for call in calls
+        if call["completion_tokens"] and call["ttft_s"] is not None
+        and call["latency_s"] > call["ttft_s"]
     ]  # fmt: skip
+    retried = [record for record in records if record.get("first_attempt")]
 
     return {
         "config": {field: run.get(field) for field in CONFIG_FIELDS},
@@ -121,6 +125,16 @@ def summarize(run_dir):
             sum(r["verdict"] == "answered_unanswerable" for r in unanswerable), len(unanswerable)
         ),
         "answerable_declined": share(sum(r["declined"] for r in answerable), len(answerable)),
+        # Only for runs with the error-feedback retry. All other metrics describe
+        # the final attempt; these show what the retry changed.
+        "retry": {
+            "correct_first_try": share(
+                sum(r["correct"] and not r.get("first_attempt") for r in records), len(records)
+            ),
+            "retried": share(len(retried), len(records)),
+            "fixed_by_retry": share(sum(r["correct"] for r in retried), len(retried)),
+            "ran_after_retry": share(sum(r["ran"] for r in retried), len(retried)),
+        } if run.get("retry") else None,
         "by_category": {
             category: share(counts["count"], counts["of"]) for category, counts in by_category.items()
         },
@@ -161,6 +175,10 @@ def write_summary(run_dir):
     show("unanswerable declined", summary["unanswerable_declined"])
     show("unanswerable answered", summary["unanswerable_answered"])
     show("answerable declined", summary["answerable_declined"])
+    if summary["retry"]:
+        print("retry")
+        for label, value in summary["retry"].items():
+            show(label.replace("_", " "), value)
     print("by category")
     for category, value in summary["by_category"].items():
         show(category, value)

@@ -1,58 +1,79 @@
 {
   "config": {
-    "name": "qwen2.5-coder_7b-a08b236d",
-    "started": "2026-10-08T17:33:59+00:00",
-    "finished": "2026-10-08T17:40:59+00:00",
+    "name": "qwen2.5-coder_7b-3ff49b60",
+    "started": "2026-10-09T07:43:51+00:00",
+    "finished": "2026-10-09T07:49:34+00:00",
     "model": "qwen2.5-coder:7b",
     "model_digest": "dae161e27b0e90dd1856c8bb3209201fd6736d8eb66298e75ed87571486f4364",
     "ollama_version": "0.35.1",
     "temperature": 0,
     "seed": 0,
     "system_prompt_sha256": "2ceb4a719616e4f9618f8f11a2522207efe03faa12d7ec5dd9bae817279310b4",
-    "examples_file": null,
-    "examples_sha256": null,
-    "retry": null,
-    "retry_prompt_sha256": null,
+    "examples_file": "configs/fewshot_v2.yaml",
+    "examples_sha256": "374bb2522c9a790350ebc5ea2f267a7e7aee424d994cec3287648a99c20dbd50",
+    "retry": true,
+    "retry_prompt_sha256": "58715f7e0d268924f292f14d645aec4a965927e89ecc75a18fd1aa9a3143d73a",
     "snapshot_sha256": "cf04b1e90e6c8bfbf9ce9dc0a7a4fdf6fd2fae0e6124b64ce44144245f4bbea2",
     "questions_sha256": "4a255b4f10fa22cb1aad3903bedf114ba2dcbb725ef4f97cf98e6b645a7fc624",
     "abs_tolerance": 0.001,
-    "git_commit": "428ab3af8a7190e4d050de1d3e92477f2efe11b6",
+    "git_commit": "31a016aa6488bbc43cee91d8d7a0f104cad5eef8",
     "git_uncommitted_changes": true
   },
   "complete": true,
   "missing_questions": [],
   "questions": 34,
   "correct_overall": {
-    "count": 17,
+    "count": 23,
     "of": 34,
-    "share": 0.5
+    "share": 0.6765
   },
   "execution_accuracy": {
-    "count": 12,
+    "count": 17,
     "of": 27,
-    "share": 0.4444
+    "share": 0.6296
   },
   "valid_sql_rate": {
     "count": 26,
-    "of": 29,
-    "share": 0.8966
+    "of": 28,
+    "share": 0.9286
   },
   "unanswerable_declined": {
-    "count": 5,
+    "count": 6,
     "of": 7,
-    "share": 0.7143
+    "share": 0.8571
   },
   "unanswerable_answered": {
-    "count": 2,
+    "count": 1,
     "of": 7,
-    "share": 0.2857
+    "share": 0.1429
   },
   "answerable_declined": {
     "count": 0,
     "of": 27,
     "share": 0.0
   },
-  "retry": null,
+  "retry": {
+    "correct_first_try": {
+      "count": 21,
+      "of": 34,
+      "share": 0.6176
+    },
+    "retried": {
+      "count": 6,
+      "of": 34,
+      "share": 0.1765
+    },
+    "fixed_by_retry": {
+      "count": 2,
+      "of": 6,
+      "share": 0.3333
+    },
+    "ran_after_retry": {
+      "count": 4,
+      "of": 6,
+      "share": 0.6667
+    }
+  },
   "by_category": {
     "simple": {
       "count": 8,
@@ -60,39 +81,39 @@
       "share": 0.8889
     },
     "date_logic": {
-      "count": 3,
+      "count": 6,
       "of": 7,
-      "share": 0.4286
+      "share": 0.8571
     },
     "window": {
-      "count": 0,
+      "count": 1,
       "of": 5,
-      "share": 0.0
+      "share": 0.2
     },
     "multi_step": {
-      "count": 1,
+      "count": 2,
       "of": 6,
-      "share": 0.1667
+      "share": 0.3333
     },
     "unanswerable": {
-      "count": 5,
+      "count": 6,
       "of": 7,
-      "share": 0.7143
+      "share": 0.8571
     }
   },
   "verdicts": {
-    "correct": 12,
-    "wrong_result": 12,
-    "declined_correctly": 5,
-    "sql_error": 3,
-    "answered_unanswerable": 2
+    "correct": 17,
+    "wrong_result": 8,
+    "declined_correctly": 6,
+    "rejected": 2,
+    "answered_unanswerable": 1
   },
   "error_categories": {
     "counts": {
       "wrong_column_or_table": 1,
-      "wrong_date_logic": 4,
-      "wrong_aggregation": 4,
-      "wrong_units": 0,
+      "wrong_date_logic": 2,
+      "wrong_aggregation": 0,
+      "wrong_units": 1,
       "wrong_label_matching": 0,
       "missing_step": 5,
       "other": 1
@@ -101,29 +122,29 @@
   },
   "performance": {
     "ttft_s": {
-      "median": 2.77,
-      "min": 1.13,
-      "max": 69.37
+      "median": 2.85,
+      "min": 1.6,
+      "max": 19.0
     },
     "latency_s": {
-      "median": 12.49,
-      "min": 2.0,
-      "max": 76.56
+      "median": 19.24,
+      "min": 2.5,
+      "max": 159.23
     },
     "generation_tokens_per_s": {
-      "median": 4.76,
-      "min": 4.32,
-      "max": 6.55
+      "median": 4.47,
+      "min": 3.36,
+      "max": 5.61
     },
     "prompt_tokens": {
-      "median": 1082.5,
-      "min": 1068,
-      "max": 1166
+      "median": 1382.5,
+      "min": 1368,
+      "max": 3133
     },
     "completion_tokens": {
-      "median": 44.5,
+      "median": 61.0,
       "min": 5,
-      "max": 163
+      "max": 396
     }
   },
   "per_question": {
@@ -132,33 +153,33 @@
     "q003": "correct",
     "q004": "correct",
     "q005": "correct",
-    "q006": "wrong_result",
+    "q006": "correct",
     "q007": "correct",
-    "q008": "wrong_result",
-    "q009": "wrong_result",
+    "q008": "rejected",
+    "q009": "correct",
     "q010": "correct",
-    "q011": "sql_error",
+    "q011": "correct",
     "q012": "wrong_result",
     "q013": "wrong_result",
-    "q014": "sql_error",
+    "q014": "rejected",
     "q015": "wrong_result",
     "q016": "correct",
     "q017": "wrong_result",
-    "q018": "wrong_result",
+    "q018": "correct",
     "q019": "wrong_result",
     "q020": "wrong_result",
     "q021": "declined_correctly",
     "q022": "declined_correctly",
     "q023": "declined_correctly",
     "q024": "declined_correctly",
-    "q025": "answered_unanswerable",
+    "q025": "declined_correctly",
     "q026": "answered_unanswerable",
     "q027": "declined_correctly",
-    "q028": "wrong_result",
+    "q028": "correct",
     "q029": "correct",
     "q030": "correct",
-    "q031": "correct",
-    "q032": "sql_error",
+    "q031": "wrong_result",
+    "q032": "correct",
     "q033": "wrong_result",
     "q034": "correct"
   }

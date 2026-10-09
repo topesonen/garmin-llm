@@ -4,6 +4,9 @@ For each question: run the gold SQL on the frozen snapshot, get the model's
 reply (from the cache if it was asked before), check and run the model's SQL
 the same way app.py does, and compare the two results.
 
+With --retry, a query that the guardrail or DuckDB refuses is sent back to
+the model once with the error message, and the second reply is the one scored.
+
 Stopping and restarting is safe. Replies are cached, so a second run asks the
 model only for what is missing and scores everything again.
 
@@ -14,7 +17,7 @@ Output: results/raw/real/<run name>/run.json with the configuration, and one
         aggregate metrics to results/processed/summaries/<run name>.json.
 
 Usage:
-    python eval/run_eval.py [--model TAG] [--examples YAML] [--ids q001 q002 ...] [--name NAME]
+    python eval/run_eval.py [--model TAG] [--examples YAML] [--retry] [--ids q001 q002 ...] [--name NAME]
 """
 
 import argparse
@@ -32,10 +35,10 @@ import duckdb
 
 from app import run_query
 from cache import DEFAULT_CACHE_DIR, cached_call
-from generate_sql import BASE_URL, MODEL, build_request, extract_sql, is_decline, send
+from generate_sql import BASE_URL, MODEL, build_request, build_retry_request, extract_sql, is_decline, send
 from guardrails import check_sql
 from load_questions import DEFAULT_QUESTIONS, load_questions
-from prompt import load_examples
+from prompt import RETRY_TEMPLATE, load_examples
 from score import ABS_TOLERANCE, compare_results
 from summarize import write_summary
 
@@ -46,6 +49,9 @@ MAX_ROWS = 1000
 TIMEOUT_S = 10
 
 CORRECT_VERDICTS = {"correct", "declined_correctly"}
+# The failures that come with an error message the model can act on.
+RETRY_VERDICTS = {"rejected", "sql_error"}
+TIMING_FIELDS = ["prompt_tokens", "completion_tokens", "ttft_s", "latency_s"]
 
 
 def sha256_text(text):
@@ -65,6 +71,8 @@ def evaluate(question, reply, db_path, max_rows=MAX_ROWS, timeout_s=TIMEOUT_S):
         "ran": False,
         "verdict": None,
         "detail": "",
+        # The full error text, for the retry. It can quote values from the data.
+        "error": None,
         "gold_rows": None,
         "model_rows": None,
     }
@@ -77,12 +85,13 @@ def evaluate(question, reply, db_path, max_rows=MAX_ROWS, timeout_s=TIMEOUT_S):
 
     allowed, reason = check_sql(sql)
     if not allowed:
-        result["verdict"], result["detail"] = "rejected", reason
+        result["verdict"], result["detail"], result["error"] = "rejected", reason, reason
         return result
     try:
         _, result["model_rows"], truncated = run_query(sql, db_path, max_rows, timeout_s)
     except duckdb.Error as error:
         result["verdict"], result["detail"] = "sql_error", str(error).splitlines()[0]
+        result["error"] = str(error)
         return result
     except TimeoutError as error:
         result["verdict"], result["detail"] = "timeout", str(error)
@@ -131,6 +140,7 @@ def main():
     parser.add_argument("--base-url", default=BASE_URL)
     parser.add_argument("--questions", type=Path, default=DEFAULT_QUESTIONS)
     parser.add_argument("--examples", type=Path, help="YAML file of worked examples to put in the prompt")
+    parser.add_argument("--retry", action="store_true", help="send a failed query back to the model once, with the error")
     parser.add_argument("--ids", nargs="+", help="run only these question ids")
     parser.add_argument("--name", help="run name; default is the model plus a hash of the configuration")
     args = parser.parse_args()
@@ -170,6 +180,8 @@ def main():
     # Added only when examples are used, so runs without them keep their name.
     if args.examples:
         config["examples_sha256"] = sha256_text(json.dumps(examples))
+    if args.retry:
+        config["retry_prompt_sha256"] = sha256_text(RETRY_TEMPLATE)
     name = args.name or f"{args.model.replace(':', '_').replace('/', '_')}-{sha256_text(json.dumps(config, sort_keys=True))[:8]}"
     out_dir = OUT_ROOT / name
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -185,6 +197,8 @@ def main():
         "system_prompt": system_prompt,
         "examples_file": str(args.examples) if args.examples else None,
         "examples": [{"question": text, "sql": sql} for text, sql in examples],
+        "retry": args.retry,
+        "retry_prompt": RETRY_TEMPLATE if args.retry else None,
         "snapshot": snapshot["snapshot"],
         "questions_file": str(args.questions),
         "questions_sha256": sha256_text(args.questions.read_text()),
@@ -207,6 +221,21 @@ def main():
             key, lambda key: send(key["request"], args.base_url), DEFAULT_CACHE_DIR
         )
         scored = evaluate(question, response["reply"], snapshot["snapshot"])
+        calls, first_attempt = [response], None
+        if args.retry and scored["verdict"] in RETRY_VERDICTS:
+            first_attempt = {field: scored[field] for field in ("sql", "verdict", "detail", "error")}
+            first_attempt["reply"] = response["reply"]
+            # The second request holds the first reply and its error, so it has its own cache entry.
+            key = {
+                "request": build_retry_request(request, response["reply"], scored["error"]),
+                "model_digest": model_digest,
+            }
+            response, retry_from_cache = cached_call(
+                key, lambda key: send(key["request"], args.base_url), DEFAULT_CACHE_DIR
+            )
+            from_cache = from_cache and retry_from_cache
+            calls.append(response)
+            scored = evaluate(question, response["reply"], snapshot["snapshot"])
         record = {
             "id": question["id"],
             "category": question["category"],
@@ -218,14 +247,23 @@ def main():
             **scored,
             "from_cache": from_cache,
             **response,
+            # With a retry: the reply and SQL are the second attempt's, the time
+            # to first token is the first call's, tokens and latency are totals.
+            "ttft_s": calls[0]["ttft_s"],
+            "latency_s": sum(call["latency_s"] for call in calls),
+            "prompt_tokens": sum(call["prompt_tokens"] or 0 for call in calls),
+            "completion_tokens": sum(call["completion_tokens"] or 0 for call in calls),
+            "first_attempt": first_attempt,
+            "calls": [{field: call[field] for field in TIMING_FIELDS} for call in calls],
         }
         write_json(out_dir / f"{question['id']}.json", record)
         # An error message can quote a value from the data, so only its type is shown.
         shown = scored["detail"].split(":")[0] if scored["verdict"] == "sql_error" else scored["detail"]
         source = "cache" if from_cache else "model"
         print(
-            f"{question['id']}  {scored['verdict']:<22} {response['latency_s']:6.1f} s  {source}"
+            f"{question['id']}  {scored['verdict']:<22} {record['latency_s']:6.1f} s  {source}"
             f"{'  ' + shown if shown else ''}"
+            f"{'  (retry after ' + first_attempt['verdict'] + ')' if first_attempt else ''}"
         )
 
     run["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")

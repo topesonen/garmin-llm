@@ -14,7 +14,7 @@ import time
 
 from openai import OpenAI
 
-from prompt import DECLINE_TOKEN, build_messages
+from prompt import DECLINE_TOKEN, build_messages, build_retry_messages
 
 BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("LLM_MODEL", "qwen2.5-coder:1.5b")
@@ -45,6 +45,11 @@ def build_request(question, model=MODEL, examples=()):
         "temperature": 0,
         "seed": 0,
     }
+
+
+def build_retry_request(request, reply, error):
+    """Return the request that asks again after a failed query."""
+    return {**request, "messages": build_retry_messages(request["messages"], reply, error)}
 
 
 def send(request, base_url=BASE_URL):
