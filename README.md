@@ -96,20 +96,22 @@ The examples and the retry message were written after reading failures on these 
 
 ### Held-out check
 
-To test that, 16 new questions ([eval/questions_heldout.yaml](eval/questions_heldout.yaml)) were written after the runs above, with a similar mix: 3 simple, 3 date logic, 4 window, 3 multi-step and 3 unanswerable. They were verified on the real data like the main set, and no prompt change may be based on the model's failures on them. The two ends of the tuning were run on them with `qwen2.5-coder:7b`:
+To test that, 16 new questions ([eval/questions_heldout.yaml](eval/questions_heldout.yaml)) were written after the runs above, with a similar mix: 3 simple, 3 date logic, 4 window, 3 multi-step and 3 unanswerable. They were verified on the real data like the main set, and no prompt change may be based on the model's failures on them. The two ends of the tuning were run on them with `qwen2.5-coder:7b`, and the best configuration with `ministral-3:8b`:
 
-|                                        | Zero-shot (as run 2)        | Examples v2 and retry (as run 6) |
-| -------------------------------------- | --------------------------- | -------------------------------- |
-| Correct overall                        | 7 of 16                     | 7 of 16                          |
-| Execution accuracy                     | 6 of 13                     | 6 of 13                          |
-| Valid SQL                              | 10 of 15                    | 13 of 15                         |
-| Unanswerable declined                  | 1 of 3                      | 1 of 3                           |
-| Fixed by the retry                     |                             | 0 of 4                           |
-| Simple, date logic, window, multi-step | 3/3, 2/3, 0/4, 1/3          | 3/3, 1/3, 1/4, 1/3               |
-| Median latency                         | 17.16 s                     | 28.26 s                          |
-| Run                                    | `qwen2.5-coder_7b-e61d0f58` | `qwen2.5-coder_7b-dc128d9a`      |
+|                                        | qwen 7b, zero-shot (as run 2) | qwen 7b, examples v2 and retry (as run 6) | ministral 8b, examples v2 and retry (as run 7) |
+| -------------------------------------- | ----------------------------- | ----------------------------------------- | ---------------------------------------------- |
+| Correct overall                        | 7 of 16                       | 7 of 16                                   | 7 of 16                                        |
+| Execution accuracy                     | 6 of 13                       | 6 of 13                                   | 7 of 13                                        |
+| Valid SQL                              | 10 of 15                      | 13 of 15                                  | 15 of 16                                       |
+| Unanswerable declined                  | 1 of 3                        | 1 of 3                                    | 0 of 3                                         |
+| Fixed by the retry                     |                               | 0 of 4                                    | 1 of 3                                         |
+| Simple, date logic, window, multi-step | 3/3, 2/3, 0/4, 1/3            | 3/3, 1/3, 1/4, 1/3                        | 3/3, 2/3, 1/4, 1/3                             |
+| Median latency                         | 17.16 s                       | 28.26 s                                   | 36.32 s                                        |
+| Run                                    | `qwen2.5-coder_7b-e61d0f58`   | `qwen2.5-coder_7b-dc128d9a`               | `ministral-3_8b-b0bb4e2c`                      |
 
 On the main set the same two configurations score 17 and 23 of 34. On the held-out questions they score the same. The examples make more queries run, but the extra queries are wrong, and the decline example does not raise the declines. The six-question gain on the main set is therefore best read as fitted to those questions, not as a general improvement. Sixteen questions is a small set and does not prove that the effect is zero, but zero-shot scores about the same share on both sets (44% and 50%), so the held-out questions are not simply harder.
+
+The model comparison holds on the held-out set: `ministral-3:8b` is level with qwen on answerable questions (7 of 13 against 6 of 13, within noise) and declines none of the three unanswerable ones, against one for qwen. It was the slowest of the three runs.
 
 ### Why the queries fail
 
