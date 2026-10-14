@@ -1,7 +1,7 @@
 """Decide whether a model's query result matches the gold query result.
 
 Both results are lists of rows, each row a tuple of values, as DuckDB returns
-them. The rules, decided by Topias on 2026-10-08:
+them. The rules, decided by Topias on 2026-10-08 (tolerance changed on 2026-10-14):
 
 - Column names are ignored, and so is column order: the model's columns may be
   rearranged, in the same way for every row, to match the gold columns.
@@ -21,8 +21,9 @@ import math
 from decimal import Decimal
 from itertools import permutations
 
-# About three decimal places: 4.1667 and 4.16666 match, 4.17 and 4.1667 do not.
-ABS_TOLERANCE = 0.001
+# Two decimal places: an answer rounded to two decimals matches, so 4.17 and
+# 4.1667 match, 4.16 and 4.1667 do not. Was 0.001 until 2026-10-14.
+ABS_TOLERANCE = 0.005
 # Trying every column order grows fast; past this width only the given order is tried.
 MAX_COLUMNS_TO_REORDER = 6
 
@@ -96,7 +97,8 @@ if __name__ == "__main__":
         (True, "integer and float", [(42,)], [(42.0,)], False),
         (True, "decimal and float", [(Decimal("21.0975"), 105.4875)], [(21.0975, 105.4875)], False),
         (True, "within tolerance", [(4.1666667,)], [(4.1667,)], False),
-        (False, "rounded to two decimals", [(4.1666667,)], [(4.17,)], False),
+        (True, "rounded to two decimals", [(4.1666667,)], [(4.17,)], False),
+        (False, "off in the second decimal", [(4.1666667,)], [(4.16,)], False),
         (True, "rows in another order, unordered question", [(1, 10.0), (2, 20.0)], [(2, 20.0), (1, 10.0)], False),
         (False, "rows in another order, ordered question", [(1, 10.0), (2, 20.0)], [(2, 20.0), (1, 10.0)], True),
         (True, "columns swapped", [(1, 10.0), (2, 20.0)], [(10.0, 1), (20.0, 2)], True),
