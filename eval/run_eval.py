@@ -182,7 +182,11 @@ def main():
         config["examples_sha256"] = sha256_text(json.dumps(examples))
     if args.retry:
         config["retry_prompt_sha256"] = sha256_text(RETRY_TEMPLATE)
-    name = args.name or f"{args.model.replace(':', '_').replace('/', '_')}-{sha256_text(json.dumps(config, sort_keys=True))[:8]}"
+    # Added only for another question file, such as the held-out set, so runs on the
+    # main set keep their name and the two sets never share a run folder.
+    if args.questions.resolve() != DEFAULT_QUESTIONS.resolve():
+        config["questions_sha256"] = sha256_text(args.questions.read_text())
+    name =args.name or f"{args.model.replace(':', '_').replace('/', '_')}-{sha256_text(json.dumps(config, sort_keys=True))[:8]}"
     out_dir = OUT_ROOT / name
     out_dir.mkdir(parents=True, exist_ok=True)
 

@@ -1,0 +1,257 @@
+# Held-out questions. Written on 2026-10-14, after the A5 runs and before any
+# further prompt change. They are never used to choose examples, schema notes
+# or instructions: do not read model failures on them while tuning a prompt.
+# Same format and rules as eval/questions.yaml.
+
+- id: h001
+  category: simple
+  question: >-
+    How many cycling activities have I recorded in total, counting every type of cycling?
+  answerable: true
+  gold_sql: |
+    SELECT count(*)
+    FROM activities
+    WHERE sport_group = 'cycling'
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: h002
+  category: simple
+  question: >-
+    What is the highest maximum heart rate recorded in any of my runs, in beats per minute?
+  answerable: true
+  gold_sql: |
+    SELECT max(max_hr_bpm)
+    FROM activities
+    WHERE sport_group = 'running'
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: h003
+  category: simple
+  question: >-
+    How many hours did I spend running in 2024, counting timer time?
+  answerable: true
+  gold_sql: |
+    SELECT sum(timer_time_s) / 3600
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2024-01-01'
+      AND start_time_local < TIMESTAMP '2025-01-01'
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: h004
+  category: date_logic
+  question: >-
+    In which month of 2025 did I record the most activities of any sport? Answer with the month number (1 to 12).
+  answerable: true
+  gold_sql: |
+    SELECT month(start_time_local) AS month
+    FROM activities
+    WHERE start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+    GROUP BY month(start_time_local)
+    ORDER BY count(*) DESC
+    LIMIT 1
+  ordered: false
+  verified: true
+  notes: "Check that no two months tie for the most activities; a tie makes the answer ambiguous."
+
+- id: h005
+  category: date_logic
+  question: >-
+    How many of my runs started before 7:00 in the morning, local time?
+  answerable: true
+  gold_sql: |
+    SELECT count(*)
+    FROM activities
+    WHERE sport_group = 'running'
+      AND hour(start_time_local) < 7
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: h006
+  category: date_logic
+  question: >-
+    What was my total running distance in km in the first quarter of 2026, January to March?
+  answerable: true
+  gold_sql: |
+    SELECT sum(distance_km)
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2026-01-01'
+      AND start_time_local < TIMESTAMP '2026-04-01'
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: h007
+  category: window
+  question: >-
+    For each calendar year, what was the distance in km of my third-longest run? Return the year and the distance, ordered by year. Leave out a year with fewer than three runs.
+  answerable: true
+  gold_sql: |
+    SELECT year(start_time_local) AS year, distance_km
+    FROM activities
+    WHERE sport_group = 'running'
+    QUALIFY row_number() OVER (
+      PARTITION BY year(start_time_local) ORDER BY distance_km DESC NULLS LAST
+    ) = 3
+    ORDER BY year
+  ordered: true
+  verified: true
+  notes: "Runs of equal distance are counted separately, so with ties the third-longest can equal the second."
+
+- id: h008
+  category: window
+  question: >-
+    What is the largest number of runs I have done in any period of 30 consecutive calendar days?
+  answerable: true
+  gold_sql: |
+    SELECT max(runs_30d)
+    FROM (
+      SELECT count(*) OVER (
+               ORDER BY CAST(start_time_local AS DATE)
+               RANGE BETWEEN INTERVAL 29 DAY PRECEDING AND CURRENT ROW
+             ) AS runs_30d
+      FROM activities
+      WHERE sport_group = 'running'
+    )
+  ordered: false
+  verified: true
+  notes: "The busiest period can be taken to end on a day with a run, so windows ending on run days are enough."
+
+- id: h009
+  category: window
+  question: >-
+    How many of my runs were longer in distance than the run just before them?
+  answerable: true
+  gold_sql: |
+    SELECT count(*)
+    FROM (
+      SELECT distance_km,
+             lag(distance_km) OVER (ORDER BY start_time_local) AS previous_km
+      FROM activities
+      WHERE sport_group = 'running'
+    )
+    WHERE distance_km > previous_km
+  ordered: false
+  verified: true
+  notes: "A run without a recorded distance, or the first run, is not counted, and a run after one without a distance is not counted either."
+
+- id: h010
+  category: window
+  question: >-
+    For each month of 2025 in which I ran, how many km more or fewer did I run than in the previous month of 2025 in which I ran? Return the month number (1 to 12) and the difference, ordered by month. Leave out the first month.
+  answerable: true
+  gold_sql: |
+    WITH monthly AS (
+      SELECT month(start_time_local) AS month, sum(distance_km) AS km
+      FROM activities
+      WHERE sport_group = 'running'
+        AND start_time_local >= TIMESTAMP '2025-01-01'
+        AND start_time_local < TIMESTAMP '2026-01-01'
+      GROUP BY month(start_time_local)
+    )
+    SELECT month, difference_km
+    FROM (
+      SELECT month, km - lag(km) OVER (ORDER BY month) AS difference_km
+      FROM monthly
+    )
+    WHERE difference_km IS NOT NULL
+    ORDER BY month
+  ordered: true
+  verified: true
+  notes: ""
+
+- id: h011
+  category: multi_step
+  question: >-
+    What percentage of my runs in 2025 were at least 20% longer than my average run distance in 2025? Count only runs with a recorded distance.
+  answerable: true
+  gold_sql: |
+    WITH runs AS (
+      SELECT distance_km
+      FROM activities
+      WHERE sport_group = 'running'
+        AND distance_km IS NOT NULL
+        AND start_time_local >= TIMESTAMP '2025-01-01'
+        AND start_time_local < TIMESTAMP '2026-01-01'
+    )
+    SELECT 100.0 * count(*) FILTER (WHERE distance_km >= 1.2 * (SELECT avg(distance_km) FROM runs))
+           / count(*) AS pct
+    FROM runs
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: h012
+  category: multi_step
+  question: >-
+    In 2025, how many km longer was my average weekend run than my average weekday run? Weekend means Saturday and Sunday. A negative number means weekend runs were shorter.
+  answerable: true
+  gold_sql: |
+    SELECT avg(distance_km) FILTER (WHERE isodow(start_time_local) IN (6, 7))
+           - avg(distance_km) FILTER (WHERE isodow(start_time_local) <= 5) AS km_difference
+    FROM activities
+    WHERE sport_group = 'running'
+      AND start_time_local >= TIMESTAMP '2025-01-01'
+      AND start_time_local < TIMESTAMP '2026-01-01'
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: h013
+  category: multi_step
+  question: >-
+    In how many weeks of 2025 did I do both at least one run and at least one strength training session? Weeks run Monday to Sunday. Count only weeks whose Monday falls in 2025.
+  answerable: true
+  gold_sql: |
+    SELECT count(*)
+    FROM (
+      SELECT date_trunc('week', start_time_local) AS week
+      FROM activities
+      WHERE sport_group IN ('running', 'strength')
+        AND date_trunc('week', start_time_local) >= TIMESTAMP '2025-01-01'
+        AND date_trunc('week', start_time_local) < TIMESTAMP '2026-01-01'
+      GROUP BY date_trunc('week', start_time_local)
+      HAVING count(DISTINCT sport_group) = 2
+    )
+  ordered: false
+  verified: true
+  notes: ""
+
+- id: h014
+  category: unanswerable
+  question: >-
+    How many minutes did I spend running uphill in 2025?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: "Only total ascent per activity is recorded, not the time spent climbing."
+
+- id: h015
+  category: unanswerable
+  question: >-
+    What was my resting heart rate on the morning of my longest run?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: "The table has heart rate during activities only."
+
+- id: h016
+  category: unanswerable
+  question: >-
+    In which city have I run the most km?
+  answerable: false
+  gold_sql: null
+  ordered: false
+  verified: true
+  notes: "The table has no location columns; place names are removed from titles."
