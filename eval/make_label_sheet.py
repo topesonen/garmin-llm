@@ -21,7 +21,7 @@ from pathlib import Path
 
 import yaml
 
-from summarize import ERROR_CATEGORIES, LABEL_ROOT, RAW_ROOT
+from summarize import ERROR_CATEGORIES, LABEL_ROOT, RAW_ROOT, record_paths
 
 
 def block(text, indent="    "):
@@ -48,7 +48,7 @@ def main():
         "# in note. Use other only when no single fix would make the query right.\n"
     ]
     kept = entries = 0
-    for record_path in sorted(run_dir.glob("q*.json")):
+    for record_path in record_paths(run_dir):
         record = json.loads(record_path.read_text())
         if record["correct"] or not record["answerable"]:
             continue

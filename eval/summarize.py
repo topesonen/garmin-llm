@@ -82,9 +82,14 @@ def error_categories(run_dir, records):
     return {"counts": counts, "unlabelled": unlabelled}
 
 
+def record_paths(run_dir):
+    """Return the per-question record files of a run: every JSON file but run.json."""
+    return sorted(path for path in run_dir.glob("*.json") if path.name != "run.json")
+
+
 def summarize(run_dir):
     run = json.loads((run_dir / "run.json").read_text())
-    records = [json.loads(path.read_text()) for path in sorted(run_dir.glob("q*.json"))]
+    records = [json.loads(path.read_text()) for path in record_paths(run_dir)]
     expected = {question["id"] for question in load_questions(run["questions_file"])}
     found = {record["id"] for record in records}
 
