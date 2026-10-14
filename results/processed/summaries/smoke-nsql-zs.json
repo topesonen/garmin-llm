@@ -1,0 +1,142 @@
+{
+  "config": {
+    "name": "smoke-nsql-zs",
+    "started": "2026-10-14T06:50:35+00:00",
+    "finished": "2026-10-14T06:51:58+00:00",
+    "model": "duckdb-nsql:7b",
+    "model_digest": "3ed7349896900d21b1c54557a477e93bbf44aa897521e08c9859ff78606a5cf1",
+    "ollama_version": "0.35.1",
+    "temperature": 0,
+    "seed": 0,
+    "system_prompt_sha256": "2ceb4a719616e4f9618f8f11a2522207efe03faa12d7ec5dd9bae817279310b4",
+    "examples_file": null,
+    "examples_sha256": null,
+    "retry": false,
+    "retry_prompt_sha256": null,
+    "snapshot_sha256": "cf04b1e90e6c8bfbf9ce9dc0a7a4fdf6fd2fae0e6124b64ce44144245f4bbea2",
+    "questions_sha256": "4a255b4f10fa22cb1aad3903bedf114ba2dcbb725ef4f97cf98e6b645a7fc624",
+    "abs_tolerance": 0.001,
+    "git_commit": "35dc0f34fc50bf4c6cdc55da6178676181340cb9",
+    "git_uncommitted_changes": true
+  },
+  "complete": false,
+  "missing_questions": [
+    "q002",
+    "q003",
+    "q004",
+    "q005",
+    "q006",
+    "q007",
+    "q008",
+    "q009",
+    "q010",
+    "q012",
+    "q013",
+    "q014",
+    "q015",
+    "q016",
+    "q017",
+    "q018",
+    "q019",
+    "q021",
+    "q022",
+    "q023",
+    "q024",
+    "q025",
+    "q026",
+    "q027",
+    "q028",
+    "q029",
+    "q031",
+    "q032",
+    "q033",
+    "q034"
+  ],
+  "questions": 4,
+  "correct_overall": {
+    "count": 0,
+    "of": 4,
+    "share": 0.0
+  },
+  "execution_accuracy": {
+    "count": 0,
+    "of": 4,
+    "share": 0.0
+  },
+  "valid_sql_rate": {
+    "count": 3,
+    "of": 4,
+    "share": 0.75
+  },
+  "unanswerable_declined": {
+    "count": 0,
+    "of": 0,
+    "share": null
+  },
+  "unanswerable_answered": {
+    "count": 0,
+    "of": 0,
+    "share": null
+  },
+  "answerable_declined": {
+    "count": 0,
+    "of": 4,
+    "share": 0.0
+  },
+  "retry": null,
+  "by_category": {
+    "simple": {
+      "count": 0,
+      "of": 2,
+      "share": 0.0
+    },
+    "window": {
+      "count": 0,
+      "of": 1,
+      "share": 0.0
+    },
+    "multi_step": {
+      "count": 0,
+      "of": 1,
+      "share": 0.0
+    }
+  },
+  "verdicts": {
+    "wrong_result": 3,
+    "sql_error": 1
+  },
+  "error_categories": null,
+  "performance": {
+    "ttft_s": {
+      "median": 6.02,
+      "min": 5.3,
+      "max": 7.02
+    },
+    "latency_s": {
+      "median": 21.25,
+      "min": 15.43,
+      "max": 25.13
+    },
+    "generation_tokens_per_s": {
+      "median": 3.53,
+      "min": 3.18,
+      "max": 4.01
+    },
+    "prompt_tokens": {
+      "median": 1487.0,
+      "min": 1479,
+      "max": 1491
+    },
+    "completion_tokens": {
+      "median": 55.0,
+      "min": 30,
+      "max": 66
+    }
+  },
+  "per_question": {
+    "q001": "wrong_result",
+    "q011": "wrong_result",
+    "q020": "sql_error",
+    "q030": "wrong_result"
+  }
+}

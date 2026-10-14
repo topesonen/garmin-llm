@@ -1,0 +1,162 @@
+{
+  "config": {
+    "name": "smoke-nsql",
+    "started": "2026-10-14T06:40:02+00:00",
+    "finished": "2026-10-14T06:47:23+00:00",
+    "model": "duckdb-nsql:7b",
+    "model_digest": "3ed7349896900d21b1c54557a477e93bbf44aa897521e08c9859ff78606a5cf1",
+    "ollama_version": "0.35.1",
+    "temperature": 0,
+    "seed": 0,
+    "system_prompt_sha256": "2ceb4a719616e4f9618f8f11a2522207efe03faa12d7ec5dd9bae817279310b4",
+    "examples_file": "configs/fewshot_v2.yaml",
+    "examples_sha256": "374bb2522c9a790350ebc5ea2f267a7e7aee424d994cec3287648a99c20dbd50",
+    "retry": true,
+    "retry_prompt_sha256": "58715f7e0d268924f292f14d645aec4a965927e89ecc75a18fd1aa9a3143d73a",
+    "snapshot_sha256": "cf04b1e90e6c8bfbf9ce9dc0a7a4fdf6fd2fae0e6124b64ce44144245f4bbea2",
+    "questions_sha256": "4a255b4f10fa22cb1aad3903bedf114ba2dcbb725ef4f97cf98e6b645a7fc624",
+    "abs_tolerance": 0.001,
+    "git_commit": "35dc0f34fc50bf4c6cdc55da6178676181340cb9",
+    "git_uncommitted_changes": false
+  },
+  "complete": false,
+  "missing_questions": [
+    "q002",
+    "q003",
+    "q004",
+    "q005",
+    "q006",
+    "q007",
+    "q008",
+    "q009",
+    "q010",
+    "q012",
+    "q013",
+    "q014",
+    "q015",
+    "q016",
+    "q017",
+    "q018",
+    "q019",
+    "q021",
+    "q022",
+    "q023",
+    "q024",
+    "q025",
+    "q026",
+    "q027",
+    "q028",
+    "q029",
+    "q031",
+    "q032",
+    "q033",
+    "q034"
+  ],
+  "questions": 4,
+  "correct_overall": {
+    "count": 0,
+    "of": 4,
+    "share": 0.0
+  },
+  "execution_accuracy": {
+    "count": 0,
+    "of": 4,
+    "share": 0.0
+  },
+  "valid_sql_rate": {
+    "count": 4,
+    "of": 4,
+    "share": 1.0
+  },
+  "unanswerable_declined": {
+    "count": 0,
+    "of": 0,
+    "share": null
+  },
+  "unanswerable_answered": {
+    "count": 0,
+    "of": 0,
+    "share": null
+  },
+  "answerable_declined": {
+    "count": 0,
+    "of": 4,
+    "share": 0.0
+  },
+  "retry": {
+    "correct_first_try": {
+      "count": 0,
+      "of": 4,
+      "share": 0.0
+    },
+    "retried": {
+      "count": 0,
+      "of": 4,
+      "share": 0.0
+    },
+    "fixed_by_retry": {
+      "count": 0,
+      "of": 0,
+      "share": null
+    },
+    "ran_after_retry": {
+      "count": 0,
+      "of": 0,
+      "share": null
+    }
+  },
+  "by_category": {
+    "simple": {
+      "count": 0,
+      "of": 2,
+      "share": 0.0
+    },
+    "window": {
+      "count": 0,
+      "of": 1,
+      "share": 0.0
+    },
+    "multi_step": {
+      "count": 0,
+      "of": 1,
+      "share": 0.0
+    }
+  },
+  "verdicts": {
+    "wrong_result": 4
+  },
+  "error_categories": null,
+  "performance": {
+    "ttft_s": {
+      "median": 11.74,
+      "min": 9.3,
+      "max": 286.05
+    },
+    "latency_s": {
+      "median": 45.26,
+      "min": 28.54,
+      "max": 321.34
+    },
+    "generation_tokens_per_s": {
+      "median": 2.74,
+      "min": 2.16,
+      "max": 2.96
+    },
+    "prompt_tokens": {
+      "median": 2055.0,
+      "min": 2047,
+      "max": 2059
+    },
+    "completion_tokens": {
+      "median": 80.0,
+      "min": 49,
+      "max": 114
+    }
+  },
+  "per_question": {
+    "q001": "wrong_result",
+    "q011": "wrong_result",
+    "q020": "wrong_result",
+    "q030": "wrong_result"
+  }
+}

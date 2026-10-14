@@ -8,7 +8,7 @@ Two phases:
 
 The application talks to the model only through the OpenAI-compatible API, so switching from Ollama to vLLM is a config change, not a rewrite.
 
-## Current status (2026-10-09)
+## Current status (2026-10-14)
 
 Done:
 - Data source: Garmin Connect activities CSV export (`Activities.csv`), stored in `data/raw/` (gitignored).
@@ -33,6 +33,8 @@ Done:
 - A5, fifth experiment (2026-10-09, Topias): `RETRY_TEMPLATE` without the decline token, run `qwen2.5-coder_7b-3ff49b60`. Same scores as the fourth: 23 of 34 correct, execution accuracy 17 of 27, unanswerable declined 6 of 7, 2 of 6 retried questions fixed. Answerable declined is back at 0 of 27 (fourth: 3), valid SQL rate 26 of 28. The three questions that were declined before still fail: q008 and q014 repeated the rejected query unchanged, q017 ran and was wrong. The old wording is kept in `run.json` of run `qwen2.5-coder_7b-abc924b9`; that run can be rebuilt from the cache but not regenerated without restoring the old template.
 - Error labels for two 7b runs (2026-10-09), pre-filled by the agent and checked by Topias: `eval/labels/qwen2.5-coder_7b-a08b236d.yaml` (zero-shot, 15 failures: 5 missing step, 4 wrong aggregation, 4 wrong date logic, 1 wrong column or table, 1 other) and `eval/labels/qwen2.5-coder_7b-3ff49b60.yaml` (best run, 10 failures: 5 missing step, 2 wrong date logic, 1 wrong column or table, 1 wrong units, 1 other). Both summaries were rebuilt and show the counts. In the best run the labels of q008, q014, q017 and q033 describe the second attempt. The other three 7b runs are left unlabelled on purpose.
 - `README.md` updated on 2026-10-09: status table, results of the five configurations, error categories of the three labelled runs, how the eval works, the note that there is no held-out set.
+- A5, second model family (2026-10-14): `duckdb-nsql:7b` (Ollama shows no licence for it) was smoke-tested on q001, q011, q020 and q030, with the best configuration (`smoke-nsql`) and zero-shot (`smoke-nsql-zs`): 0 of 4 correct in both, so it was not run on the full set. Topias then chose `ministral-3:8b` (Apache 2.0). Smoke run `smoke-ministral` on the same four questions: 3 of 4. The three smoke summaries are committed and marked incomplete.
+- A5, full run of `ministral-3:8b` (2026-10-14), `configs/fewshot_v2.yaml` with `--retry`, run `ministral-3_8b-22cea93a`: 20 of 34 correct (best qwen 7b run: 23), execution accuracy 16 of 27 (17), unanswerable declined 4 of 7 (6), answerable declined 0 of 27, valid SQL rate 27 of 30, 2 of 6 retried questions fixed. By category: simple 9 of 9, date logic 6 of 7, window 0 of 5, multi-step 1 of 6. Median latency 31.86 s (qwen 7b best run 19.24 s), median 3.22 generated tokens/s (4.47). Most of the gap to qwen comes from unanswerable questions. The examples and the retry message were written from qwen's failures, which may favour qwen. The failures are not labelled. The run's `run.json` records uncommitted changes because the smoke summaries were untracked at the time; the code was at commit `35dc0f3`. Two earlier crashes of the laptop happened during this work (cause unknown; 27 of 30 GB memory was free when the smoke run started), and the full run completed without one.
 
 Open:
 - No held-out questions. The examples, the decline example and the retry message were all written after reading failures on the same 34 questions, and every run is scored on those 34. The results table must say so; a held-out set (new questions up to the 50 limit) would be needed before claiming that a prompt change generalizes.
@@ -42,7 +44,7 @@ Open:
 - Rerunning a configuration rewrites its `run.json`, so `started`, `finished` and `git_commit` describe the latest rerun, not when the model replies were generated. The first run's replies date from 2026-10-08; its `run.json` was rewritten by a rerun from the cache on the same day.
 - `guardrails.py` was changed on 2026-10-07 and has no automated tests yet. It now reads table names from the parsed query (`json_serialize_sql`) in place of `get_table_names`, which rejected valid queries with a `RANGE BETWEEN INTERVAL ... PRECEDING` window frame. The same change closed the earlier gap: system catalogs and table functions other than `generate_series`, `range` and `unnest` are now rejected. Checked by hand on 22 allow and reject cases and the 15 gold queries.
 
-Next: Topias decides how A5 ends. The agent's suggestion: stop tuning the prompt against these 34 questions, run one more model family with the best configuration (`--examples configs/fewshot_v2.yaml --retry`) for the comparison the plan asks for, and write the A5 results table. Further accuracy work (window questions are 1 of 5 at best) should wait for held-out questions. A7 (synthetic data) can be built alongside.
+Next: Topias decides whether to label the failures of the `ministral-3:8b` run, then the A5 results table (all metrics, all configurations, with the no-held-out-set note). Window and multi-step questions stay weak for both model families; further accuracy work should wait for held-out questions. A7 (synthetic data) can be built alongside.
 
 ## Why this project
 
@@ -71,7 +73,7 @@ Implications:
 
 | Decision | Options | Status |
 |---|---|---|
-| Generator models (2 to 3) | Small models from the Ollama library, including at least one code/SQL-oriented model if available, plus one 7B/8B for comparison. Verify availability and licence at decision time. | Partly decided: `qwen2.5-coder:1.5b` (baseline) and `qwen2.5-coder:7b` (Topias, 2026-10-08), both Apache 2.0. A second model family is open |
+| Generator models (2 to 3) | Small models from the Ollama library, including at least one code/SQL-oriented model if available, plus one 7B/8B for comparison. Verify availability and licence at decision time. | Partly decided: `qwen2.5-coder:1.5b` (baseline) and `qwen2.5-coder:7b` (Topias, 2026-10-08), both Apache 2.0. Second family (2026-10-14): `ministral-3:8b`, Apache 2.0, after `duckdb-nsql:7b` scored 0 of 4 in a smoke test |
 | Exclude accidental short activities in eval questions | Yes / no, and threshold | TBD |
 | Full Garmin account export later (FIT files, sleep, VO2max) | See `GARMIN_SETUP.md`. Not needed for v1. | Deferred |
 | Interface | CLI only, or a minimal web UI (e.g. Streamlit or Gradio) | TBD |
@@ -140,7 +142,7 @@ Status: done 2026-10-08. The 17 failures of the first run on answerable question
 ### A5. Experiments
 Vary one thing at a time against the baseline: model, schema description detail, number of few-shot examples, error-feedback retry on/off.
 Done when: a results table compares configurations on all metrics, with raw results stored (aggregates only for real data, see privacy).
-Status: in progress 2026-10-09. Run so far: model size (1.5b and 7b), few-shot examples (0, 3, 3 plus one decline example), retry on and off. Not run: schema description detail, a second model family. The table in `README.md` covers correct overall, execution accuracy, declines and latency; a full table on all metrics is not written yet.
+Status: in progress 2026-10-09. Run so far: model size (1.5b and 7b), few-shot examples (0, 3, 3 plus one decline example), retry on and off. Second model family run on 2026-10-14 (`ministral-3:8b`). Not run: schema description detail. The table in `README.md` covers correct overall, execution accuracy, declines and latency; a full table on all metrics is not written yet.
 
 ### A6. Interface (optional)
 Minimal UI for demos.
@@ -266,3 +268,4 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-09 | A5 | Retry run by Topias (`qwen2.5-coder_7b-abc924b9`): 23 of 34, 2 of 6 retried questions fixed, 3 declined wrongly because the retry message offered the decline token. Retry message changed to drop that option; README updated | Topias: rerun with `--retry` |
 | 2026-10-09 | A5 | Second retry run by Topias (`qwen2.5-coder_7b-3ff49b60`), retry message without the decline option: 23 of 34 again, no answerable question declined, the same 2 of 6 fixed. README updated, with a note that there is no held-out set | Topias: decide how A5 ends (suggested: one more model, labels, results table) |
 | 2026-10-09 | A5 | Label sheets made and pre-filled by the agent for the 7b zero-shot run and the best run (25 entries); checked by Topias, both summaries rebuilt, README and this file brought up to date | Topias: decide how A5 ends (suggested: one more model family, then the results table). The session's work was committed and pushed as `9a5c1c2` |
+| 2026-10-14 | A5 | Second model family: `duckdb-nsql:7b` smoke-tested on four questions (0 of 4 with the best configuration and zero-shot), then `ministral-3:8b` (Apache 2.0): smoke run 3 of 4, full run `ministral-3_8b-22cea93a` 20 of 34 against 23 for the best qwen 7b run, slower (median latency 31.86 s against 19.24 s). Two laptop crashes during the session, cause unknown | Topias: decide on labelling the Mistral failures. Agent: A5 results table |
