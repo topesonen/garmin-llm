@@ -24,13 +24,13 @@ Work in progress. The plan and the session log are in [PROJECT.md](PROJECT.md).
 | Environment check and first speed measurement | Done |
 | Baseline assistant (question to SQL to result) | Done |
 | Manual validation of the ingest | Done |
-| Evaluation set (34 questions with gold SQL) and harness | Done |
+| Evaluation set (34 questions with gold SQL, plus 16 held-out) and harness | Done |
 | Model and prompt experiments | Results table done; schema-detail experiment not run |
 | Synthetic data, so others can run it | Not started |
 
 ## Results
 
-The evaluation set has 34 questions: 27 that the table can answer and 7 that it cannot, where the right reply is to decline. A generated query counts as correct when it returns the same result as the gold query on a frozen copy of the database. All runs are on my real data, so only aggregate metrics are published. Every run is at temperature 0 on the same 34 questions.
+The evaluation set has 34 questions: 27 that the table can answer and 7 that it cannot, where the right reply is to decline. A generated query counts as correct when it returns the same result as the gold query on a frozen copy of the database. All runs are on my real data, so only aggregate metrics are published. Every run is at temperature 0 on the same 34 questions. A separate set of 16 held-out questions, written after these runs, checks which of the results carry over to new questions; see [Held-out check](#held-out-check).
 
 Configurations, in the order they were run. "Examples v1" is three worked SQL examples in the prompt ([configs/fewshot_v1.yaml](configs/fewshot_v1.yaml)); "examples v2" adds one example of declining ([configs/fewshot_v2.yaml](configs/fewshot_v2.yaml)). "Retry" sends a query that failed back to the model once, with the error message.
 
@@ -81,6 +81,8 @@ Runs 5 and 6 reuse the cached first replies of run 4, with their old timings, so
 
 ### What the runs show
 
+These are results on the main set, which the prompt was tuned on. The held-out check below shows that the gain from the examples and the retry does not carry over.
+
 - The larger qwen model declines unanswerable questions that the small one always answered, but writes only slightly better SQL without examples.
 - Three worked examples in the prompt improved the SQL and stopped the model from declining, because every example answered with SQL. One added example of declining brought that back.
 - The retry fixed 2 of the 6 failed first replies in each retry run. In run 5 the retry message offered declining as a way out, and on 3 questions the model gave up on a question it could have answered. With that option removed (run 6) it no longer declined them, but it did not fix them either.
@@ -90,7 +92,24 @@ Runs 5 and 6 reuse the cached first replies of run 4, with their old timings, so
 
 `duckdb-nsql:7b`, a model trained for DuckDB SQL, was tried first as the second family: it got none of four questions right in a smoke test, with or without the examples, so it was not run on the full set.
 
-The examples and the retry message were written after reading failures on these same 34 questions, and every run is scored on them, so the later rows are likely to flatter the method. There is no held-out set yet.
+The examples and the retry message were written after reading failures on these same 34 questions, and runs 1 to 7 are scored on them, so the later rows are likely to flatter the method.
+
+### Held-out check
+
+To test that, 16 new questions ([eval/questions_heldout.yaml](eval/questions_heldout.yaml)) were written after the runs above, with a similar mix: 3 simple, 3 date logic, 4 window, 3 multi-step and 3 unanswerable. They were verified on the real data like the main set, and no prompt change may be based on the model's failures on them. The two ends of the tuning were run on them with `qwen2.5-coder:7b`:
+
+| | Zero-shot (as run 2) | Examples v2 and retry (as run 6) |
+|---|---|---|
+| Correct overall | 7 of 16 | 7 of 16 |
+| Execution accuracy | 6 of 13 | 6 of 13 |
+| Valid SQL | 10 of 15 | 13 of 15 |
+| Unanswerable declined | 1 of 3 | 1 of 3 |
+| Fixed by the retry | | 0 of 4 |
+| Simple, date logic, window, multi-step | 3/3, 2/3, 0/4, 1/3 | 3/3, 1/3, 1/4, 1/3 |
+| Median latency | 17.16 s | 28.26 s |
+| Run | `qwen2.5-coder_7b-e61d0f58` | `qwen2.5-coder_7b-dc128d9a` |
+
+On the main set the same two configurations score 17 and 23 of 34. On the held-out questions they score the same. The examples make more queries run, but the extra queries are wrong, and the decline example does not raise the declines. The six-question gain on the main set is therefore best read as fitted to those questions, not as a general improvement. Sixteen questions is a small set and does not prove that the effect is zero, but zero-shot scores about the same share on both sets (44% and 50%), so the held-out questions are not simply harder.
 
 ### Why the queries fail
 
@@ -122,6 +141,7 @@ The model is reached only through the OpenAI-compatible API, so a different serv
 ## How it is evaluated
 
 - [eval/questions.yaml](eval/questions.yaml) holds the questions and a gold SQL query for each. Expected answers are computed by running the gold query, never typed by hand.
+- [eval/questions_heldout.yaml](eval/questions_heldout.yaml) holds 16 held-out questions in the same format, run with `--questions eval/questions_heldout.yaml`. Their runs get their own run names.
 - `eval/run_eval.py` runs every question through one configuration and compares result sets with `eval/score.py`: numbers may differ by at most 0.005, column names are ignored, and row order counts only where the question asks for it.
 - Every model reply is cached on disk, keyed by the full request, so an interrupted run continues where it stopped.
 - `--examples` adds the worked examples in a file such as [configs/fewshot_v2.yaml](configs/fewshot_v2.yaml) to the prompt. The examples are not eval questions.
@@ -176,5 +196,6 @@ The rules are in the Privacy section of [PROJECT.md](PROJECT.md).
 - [docs/environment.md](docs/environment.md): machine, versions, model digest, measurements
 - [docs/validation.md](docs/validation.md): manual check of the ingest
 - [eval/questions.yaml](eval/questions.yaml): the evaluation questions and gold SQL
+- [eval/questions_heldout.yaml](eval/questions_heldout.yaml): the held-out questions
 - [results/processed/summaries/](results/processed/summaries/): aggregate metrics per eval run
 - [eval/labels/](eval/labels/): hand-made error labels for the failures of four runs
