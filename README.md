@@ -98,16 +98,16 @@ The examples and the retry message were written after reading failures on these 
 
 To test that, 16 new questions ([eval/questions_heldout.yaml](eval/questions_heldout.yaml)) were written after the runs above, with a similar mix: 3 simple, 3 date logic, 4 window, 3 multi-step and 3 unanswerable. They were verified on the real data like the main set, and no prompt change may be based on the model's failures on them. The two ends of the tuning were run on them with `qwen2.5-coder:7b`:
 
-| | Zero-shot (as run 2) | Examples v2 and retry (as run 6) |
-|---|---|---|
-| Correct overall | 7 of 16 | 7 of 16 |
-| Execution accuracy | 6 of 13 | 6 of 13 |
-| Valid SQL | 10 of 15 | 13 of 15 |
-| Unanswerable declined | 1 of 3 | 1 of 3 |
-| Fixed by the retry | | 0 of 4 |
-| Simple, date logic, window, multi-step | 3/3, 2/3, 0/4, 1/3 | 3/3, 1/3, 1/4, 1/3 |
-| Median latency | 17.16 s | 28.26 s |
-| Run | `qwen2.5-coder_7b-e61d0f58` | `qwen2.5-coder_7b-dc128d9a` |
+|                                        | Zero-shot (as run 2)        | Examples v2 and retry (as run 6) |
+| -------------------------------------- | --------------------------- | -------------------------------- |
+| Correct overall                        | 7 of 16                     | 7 of 16                          |
+| Execution accuracy                     | 6 of 13                     | 6 of 13                          |
+| Valid SQL                              | 10 of 15                    | 13 of 15                         |
+| Unanswerable declined                  | 1 of 3                      | 1 of 3                           |
+| Fixed by the retry                     |                             | 0 of 4                           |
+| Simple, date logic, window, multi-step | 3/3, 2/3, 0/4, 1/3          | 3/3, 1/3, 1/4, 1/3               |
+| Median latency                         | 17.16 s                     | 28.26 s                          |
+| Run                                    | `qwen2.5-coder_7b-e61d0f58` | `qwen2.5-coder_7b-dc128d9a`      |
 
 On the main set the same two configurations score 17 and 23 of 34. On the held-out questions they score the same. The examples make more queries run, but the extra queries are wrong, and the decline example does not raise the declines. The six-question gain on the main set is therefore best read as fitted to those questions, not as a general improvement. Sixteen questions is a small set and does not prove that the effect is zero, but zero-shot scores about the same share on both sets (44% and 50%), so the held-out questions are not simply harder.
 
@@ -115,15 +115,15 @@ On the main set the same two configurations score 17 and 23 of 34. On the held-o
 
 Failures on answerable questions were labelled by hand for four runs, by reading the model's SQL next to the gold SQL:
 
-| Category | 1: 1.5b zero-shot | 2: 7b zero-shot | 6: 7b, examples and retry | 7: ministral, examples and retry |
-|---|---|---|---|---|
-| Missing step | 6 | 5 | 5 | 4 |
-| Wrong aggregation | 5 | 4 | 0 | 1 |
-| Wrong date logic | 3 | 4 | 2 | 3 |
-| Wrong column or table | 1 | 1 | 1 | 1 |
-| Wrong units | 0 | 0 | 1 | 0 |
-| Other | 2 | 1 | 1 | 1 |
-| Failures | 17 | 15 | 10 | 10 |
+| Category              | 1: 1.5b zero-shot | 2: 7b zero-shot | 6: 7b, examples and retry | 7: ministral, examples and retry |
+| --------------------- | ----------------- | --------------- | ------------------------- | -------------------------------- |
+| Missing step          | 6                 | 5               | 5                         | 4                                |
+| Wrong aggregation     | 5                 | 4               | 0                         | 1                                |
+| Wrong date logic      | 3                 | 4               | 2                         | 3                                |
+| Wrong column or table | 1                 | 1               | 1                         | 1                                |
+| Wrong units           | 0                 | 0               | 1                         | 0                                |
+| Other                 | 2                 | 1               | 1                         | 1                                |
+| Failures              | 17                | 15              | 10                        | 10                               |
 
 "Missing step" means the query answers a simpler question than the one asked, for example monthly totals where a running total was asked. The examples and the retry removed most aggregation mistakes; the missing steps stayed, in both model families, and most of them are on window-function questions. The labels are in [eval/labels/](eval/labels/).
 
