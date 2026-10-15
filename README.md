@@ -127,6 +127,27 @@ The minimal schema holds on the held-out set too: 7 of 13 answerable questions a
 
 The plan does not help on the held-out set: 5 of 13 answerable questions against 6 of 13, and none of the 4 window questions. Neither more context about the table nor a written plan moves the window and multi-step questions with this model.
 
+### Reference: a hosted model
+
+To check whether the questions themselves are hard, both sets were run once on a hosted model, `claude-haiku-5-5` (Claude Haiku 5.5) through the Anthropic API, zero-shot and without retry. The assistant itself stays local; this run is a reference point only. Only the prompt leaves the machine: instructions, schema and question, all of which are public in this repository. The queries run locally, and the retry is refused for hosted models because DuckDB error messages can quote values from the data. Haiku 5.5 accepts no temperature or seed, so its replies cannot be reproduced exactly; the stored replies make the scoring reproducible. Thinking was turned off, so it answers directly like the local models.
+
+|                                        | qwen 7b, zero-shot (run 2)    | qwen 7b, best (run 6)         | Haiku 5.5, zero-shot          |
+| -------------------------------------- | ----------------------------- | ----------------------------- | ----------------------------- |
+| Main set, correct overall              | 17 of 34                      | 23 of 34                      | 31 of 34                      |
+| Main set, execution accuracy           | 12 of 27                      | 17 of 27                      | 24 of 27                      |
+| Main set, unanswerable declined        | 5 of 7                        | 6 of 7                        | 7 of 7                        |
+| Main set, simple, date, window, multi  | 8/9, 3/7, 0/5, 1/6            | 8/9, 6/7, 1/5, 2/6            | 8/9, 6/7, 5/5, 5/6            |
+| Held-out, correct overall              | 7 of 16                       | 7 of 16                       | 16 of 16                      |
+| Held-out, execution accuracy           | 6 of 13                       | 6 of 13                       | 13 of 13                      |
+| Held-out, window                       | 0 of 4                        | 1 of 4                        | 4 of 4                        |
+| Runs (main, held-out)                  | `a08b236d`, `e61d0f58`        | `3ff49b60`, `dc128d9a`        | `995023bf`, `c34994c1`        |
+
+Run names are shortened; the full names are `qwen2.5-coder_7b-...` and `claude-haiku-5-5-...`. The two runs used 96,421 input and 5,902 output tokens, about $0.013 at the listed price of $0.10 and $0.50 per million. The median latency was 1.17 s per question on the main set, against 12 to 30 s on the laptop; network and data-centre hardware make that a context figure, not a comparison.
+
+None of Haiku's three main-set failures is a wrong approach. Two return the right answer with extra columns; with them dropped, both match the gold query. The third puts a sentence before an otherwise well-formed query, so the guardrail refuses it. That query uses the `avg_pace_s_per_km` column, which [docs/schema.md](docs/schema.md) describes as timer time divided by distance, where the question asks for that division. In the data the two differ slightly (median 0.25 s per km over 302 runs, more than 1 s for 6 of them), enough to miss the 0.005 tolerance. So the schema description is slightly wrong there, and a model that trusts it is misled.
+
+A capable model answers every held-out question and all nine window questions. The questions and gold queries hold up, and the failures of the local models come from the models, not from ambiguous questions. That agrees with the two prompt experiments above: neither more schema detail nor a written plan moved the window and multi-step questions with the 7b model.
+
 ### Why the queries fail
 
 Failures on answerable questions were labelled by hand for five runs, by reading the model's SQL next to the gold SQL:
@@ -155,6 +176,8 @@ The numbers come from the files in [results/processed/summaries/](results/proces
 4. `src/app.py` runs the query on a read-only connection with no file or network access, a timeout and a row limit.
 
 The model is reached only through the OpenAI-compatible API, so a different server can be used by setting `LLM_BASE_URL` and `LLM_MODEL`.
+
+For the hosted reference run only, `eval/run_eval.py` sends models whose name starts with `claude-` through the Anthropic Python SDK (`src/send_anthropic.py`), with the same prompt text.
 
 ## How it is evaluated
 
@@ -198,6 +221,8 @@ ollama pull qwen2.5-coder:7b
 python eval/run_eval.py --model qwen2.5-coder:7b --examples configs/fewshot_v2.yaml
 ```
 
+The hosted reference run needs an Anthropic API key in `ANTHROPIC_API_KEY` and runs with `python eval/run_eval.py --model claude-haiku-5-5`.
+
 The gold queries in `eval/questions.yaml` were verified against my data. On another export they still run, but nobody has checked that their answers are right for it.
 
 ## Privacy
@@ -205,6 +230,7 @@ The gold queries in `eval/questions.yaml` were verified against my data. On anot
 - The raw export, the database and anything derived from individual activities are gitignored.
 - Activity titles are not loaded as they are; leading place names are removed, and the table has no location columns.
 - Aggregate figures about the real data (row counts, date range, ranges) appear in the docs on purpose. Individual activities are not published.
+- The hosted reference run sends only the prompt (instructions, schema, examples, question) to the Anthropic API. Queries run locally, and the retry, whose message can quote values from the data, is refused for hosted models.
 
 The rules are in the Privacy section of [PROJECT.md](PROJECT.md).
 

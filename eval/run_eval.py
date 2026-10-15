@@ -10,6 +10,12 @@ the model once with the error message, and the second reply is the one scored.
 With --plan, the model is asked to write a short plan as SQL comments before
 the query.
 
+A model whose name starts with claude- is called through the Anthropic API
+(src/send_anthropic.py) in place of the local server. Only the prompt is sent:
+questions, schema and examples, which are all public. --retry is refused for
+those models, because the retry message quotes DuckDB errors, which can
+contain values from the real data.
+
 Stopping and restarting is safe. Replies are cached, so a second run asks the
 model only for what is missing and scores everything again.
 
@@ -42,6 +48,7 @@ from generate_sql import BASE_URL, MODEL, build_request, build_retry_request, ex
 from guardrails import check_sql
 from load_questions import DEFAULT_QUESTIONS, load_questions
 from prompt import DEFAULT_SCHEMA, RETRY_TEMPLATE, load_examples
+from send_anthropic import is_hosted, send_anthropic, to_anthropic_request
 from score import ABS_TOLERANCE, compare_results
 from summarize import write_summary
 
@@ -149,6 +156,9 @@ def main():
     parser.add_argument("--ids", nargs="+", help="run only these question ids")
     parser.add_argument("--name", help="run name; default is the model plus a hash of the configuration")
     args = parser.parse_args()
+    hosted = is_hosted(args.model)
+    if hosted and args.retry:
+        raise SystemExit("--retry is not allowed with a hosted model: DuckDB errors can quote values from the data")
 
     questions = load_questions(args.questions)
     unverified = [q["id"] for q in questions if not q["verified"]]
@@ -170,7 +180,7 @@ def main():
     if overlap:
         raise SystemExit(f"{args.examples} repeats an eval question: {sorted(overlap)[0]}")
 
-    ollama_version, model_digest = ollama_info(args.base_url, args.model)
+    ollama_version, model_digest = (None, None) if hosted else ollama_info(args.base_url, args.model)
     example = build_request("", args.model, schema_path=args.schema, plan=args.plan)
     system_prompt = example["messages"][0]["content"]
     # Everything that defines this configuration. A change to any of it gives a new run folder.
@@ -178,11 +188,18 @@ def main():
     config = {
         "model": args.model,
         "model_digest": model_digest,
-        "temperature": example["temperature"],
-        "seed": example["seed"],
+        # A hosted model accepts neither, so they are not sent.
+        "temperature": None if hosted else example["temperature"],
+        "seed": None if hosted else example["seed"],
         "system_prompt_sha256": sha256_text(system_prompt),
         "snapshot_sha256": snapshot["sha256"],
     }
+    # Added only for a hosted model, so local runs keep their name.
+    if hosted:
+        settings = to_anthropic_request(example)
+        config["provider"] = "anthropic"
+        config["max_tokens"] = settings["max_tokens"]
+        config["thinking"] = settings["thinking"]
     # Added only when examples are used, so runs without them keep their name.
     if args.examples:
         config["examples_sha256"] = sha256_text(json.dumps(examples))
@@ -202,7 +219,7 @@ def main():
         "started": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "finished": None,
         **config,
-        "base_url": args.base_url,
+        "base_url": None if hosted else args.base_url,
         "ollama_version": ollama_version,
         "system_prompt": system_prompt,
         "schema_file": str(args.schema),
@@ -227,11 +244,14 @@ def main():
 
     for question in questions:
         request = build_request(question["question"], args.model, examples, args.schema, args.plan)
+        if hosted:
+            request = to_anthropic_request(request)
+            send_request = send_anthropic
+        else:
+            send_request = lambda request: send(request, args.base_url)
         # The digest is part of the key: the same tag can point to a new model version.
         key = {"request": request, "model_digest": model_digest}
-        response, from_cache = cached_call(
-            key, lambda key: send(key["request"], args.base_url), DEFAULT_CACHE_DIR
-        )
+        response, from_cache = cached_call(key, lambda key: send_request(key["request"]), DEFAULT_CACHE_DIR)
         scored = evaluate(question, response["reply"], snapshot["snapshot"])
         calls, first_attempt = [response], None
         if args.retry and scored["verdict"] in RETRY_VERDICTS:
