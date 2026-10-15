@@ -17,7 +17,7 @@ Output: results/raw/real/<run name>/run.json with the configuration, and one
         aggregate metrics to results/processed/summaries/<run name>.json.
 
 Usage:
-    python eval/run_eval.py [--model TAG] [--examples YAML] [--retry] [--ids q001 q002 ...] [--name NAME]
+    python eval/run_eval.py [--model TAG] [--schema MD] [--examples YAML] [--retry] [--ids q001 q002 ...] [--name NAME]
 """
 
 import argparse
@@ -38,7 +38,7 @@ from cache import DEFAULT_CACHE_DIR, cached_call
 from generate_sql import BASE_URL, MODEL, build_request, build_retry_request, extract_sql, is_decline, send
 from guardrails import check_sql
 from load_questions import DEFAULT_QUESTIONS, load_questions
-from prompt import RETRY_TEMPLATE, load_examples
+from prompt import DEFAULT_SCHEMA, RETRY_TEMPLATE, load_examples
 from score import ABS_TOLERANCE, compare_results
 from summarize import write_summary
 
@@ -139,6 +139,7 @@ def main():
     parser.add_argument("--model", default=MODEL)
     parser.add_argument("--base-url", default=BASE_URL)
     parser.add_argument("--questions", type=Path, default=DEFAULT_QUESTIONS)
+    parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA, help="schema description to put in the system prompt")
     parser.add_argument("--examples", type=Path, help="YAML file of worked examples to put in the prompt")
     parser.add_argument("--retry", action="store_true", help="send a failed query back to the model once, with the error")
     parser.add_argument("--ids", nargs="+", help="run only these question ids")
@@ -166,9 +167,10 @@ def main():
         raise SystemExit(f"{args.examples} repeats an eval question: {sorted(overlap)[0]}")
 
     ollama_version, model_digest = ollama_info(args.base_url, args.model)
-    example = build_request("", args.model)
+    example = build_request("", args.model, schema_path=args.schema)
     system_prompt = example["messages"][0]["content"]
     # Everything that defines this configuration. A change to any of it gives a new run folder.
+    # The schema is part of the system prompt, so another schema file changes its hash.
     config = {
         "model": args.model,
         "model_digest": model_digest,
@@ -199,6 +201,7 @@ def main():
         "base_url": args.base_url,
         "ollama_version": ollama_version,
         "system_prompt": system_prompt,
+        "schema_file": str(args.schema),
         "examples_file": str(args.examples) if args.examples else None,
         "examples": [{"question": text, "sql": sql} for text, sql in examples],
         "retry": args.retry,
@@ -218,7 +221,7 @@ def main():
     print(f"run {name}: {len(questions)} questions, results in {out_dir}")
 
     for question in questions:
-        request = build_request(question["question"], args.model, examples)
+        request = build_request(question["question"], args.model, examples, args.schema)
         # The digest is part of the key: the same tag can point to a new model version.
         key = {"request": request, "model_digest": model_digest}
         response, from_cache = cached_call(

@@ -14,7 +14,7 @@ import time
 
 from openai import OpenAI
 
-from prompt import DECLINE_TOKEN, build_messages, build_retry_messages
+from prompt import DECLINE_TOKEN, DEFAULT_SCHEMA, build_messages, build_retry_messages
 
 BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("LLM_MODEL", "qwen2.5-coder:1.5b")
@@ -37,11 +37,11 @@ def is_decline(sql):
     return sql.upper().startswith(DECLINE_TOKEN)
 
 
-def build_request(question, model=MODEL, examples=()):
+def build_request(question, model=MODEL, examples=(), schema_path=DEFAULT_SCHEMA):
     """Return everything that determines the reply; also the key for caching it."""
     return {
         "model": model,
-        "messages": build_messages(question, examples=examples),
+        "messages": build_messages(question, schema_path=schema_path, examples=examples),
         "temperature": 0,
         "seed": 0,
     }
