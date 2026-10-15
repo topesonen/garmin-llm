@@ -17,7 +17,7 @@ One row per recorded workout from Garmin Connect. NULL means the value was not r
 | elapsed_time_s | DOUBLE | seconds | Wall-clock time from start to end, including pauses |
 | timer_time_s | DOUBLE | seconds | Timer time, excluding pauses. Use this for duration and pace |
 | moving_time_s | DOUBLE | seconds | Time spent moving. NULL for activities without GPS |
-| avg_pace_s_per_km | DOUBLE | seconds per km | Average pace (timer time / distance). Foot sports only |
+| avg_pace_s_per_km | DOUBLE | seconds per km | Garmin's average pace, based on timer time and rounded to whole seconds, so it can differ from timer_time_s / distance_km by a few seconds. Foot sports only |
 | best_pace_s_per_km | DOUBLE | seconds per km | Best pace. Foot sports only |
 | avg_gap_s_per_km | DOUBLE | seconds per km | Grade-adjusted pace. Running only |
 | avg_speed_kmh | DOUBLE | km/h | Average speed. Cycling and some other sports only |

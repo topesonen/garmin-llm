@@ -30,7 +30,7 @@ All empty, constant or near-empty in this export: Favorite (always False), Train
 
 | Check | Result |
 |---|---|
-| Garmin `Avg Pace` vs timer time / distance (foot sports) | Max difference 7.5 s/km: distance is km, pace is based on timer time, not moving time |
+| Garmin `Avg Pace` vs timer time / distance (foot sports) | Max difference 7.5 s/km: distance is km, pace is based on timer time, not moving time. Rechecked 2026-10-15 on the 302 runs with both values: every pace is a whole number of seconds (the export gives `m:ss`), 246 are within 0.5 s of timer time / distance, median difference 0.25 s, against 6.08 s for moving time / distance. `docs/schema.md` said the column was timer time / distance; it now says it is rounded |
 | Track Running pace vs distance/1000 | Matches: confirms metres |
 | Cadence x stride length vs speed from pace | Median difference 0.07 km/h: stride in metres, cadence in steps/min |
 | Vertical oscillation / stride vs vertical ratio | Median difference 0.07 points: oscillation in cm, ratio in percent |
