@@ -129,19 +129,21 @@ The plan does not help on the held-out set: 5 of 13 answerable questions against
 
 ### Why the queries fail
 
-Failures on answerable questions were labelled by hand for four runs, by reading the model's SQL next to the gold SQL:
+Failures on answerable questions were labelled by hand for five runs, by reading the model's SQL next to the gold SQL:
 
-| Category              | 1: 1.5b zero-shot | 2: 7b zero-shot | 6: 7b, examples and retry | 7: ministral, examples and retry |
-| --------------------- | ----------------- | --------------- | ------------------------- | -------------------------------- |
-| Missing step          | 6                 | 5               | 5                         | 4                                |
-| Wrong aggregation     | 5                 | 4               | 0                         | 1                                |
-| Wrong date logic      | 3                 | 4               | 2                         | 3                                |
-| Wrong column or table | 1                 | 1               | 1                         | 1                                |
-| Wrong units           | 0                 | 0               | 1                         | 0                                |
-| Other                 | 2                 | 1               | 1                         | 1                                |
-| Failures              | 17                | 15              | 10                        | 10                               |
+| Category              | 1: 1.5b zero-shot | 2: 7b zero-shot | 6: 7b, examples and retry | 7: ministral, examples and retry | 9: 7b, plan |
+| --------------------- | ----------------- | --------------- | ------------------------- | -------------------------------- | ----------- |
+| Missing step          | 6                 | 5               | 5                         | 4                                | 3           |
+| Wrong aggregation     | 5                 | 4               | 0                         | 1                                | 1           |
+| Wrong date logic      | 3                 | 4               | 2                         | 3                                | 2           |
+| Wrong column or table | 1                 | 1               | 1                         | 1                                | 0           |
+| Wrong units           | 0                 | 0               | 1                         | 0                                | 0           |
+| Other                 | 2                 | 1               | 1                         | 1                                | 5           |
+| Failures              | 17                | 15              | 10                        | 10                               | 11          |
 
 "Missing step" means the query answers a simpler question than the one asked, for example monthly totals where a running total was asked. The examples and the retry removed most aggregation mistakes; the missing steps stayed, in both model families, and most of them are on window-function questions. The labels are in [eval/labels/](eval/labels/).
+
+The labels of run 9 also judge the plan the model wrote before each failed query. In 6 of the 11 failures the plan was right and the query did not follow it: for one question the plan asks for a cumulative sum per month and the query sums each month without accumulating. In 3 the plan only restated the hard part of the question ("find the longest run", "identify consecutive days") without a way to do it; these are the hardest window questions. In 2 the plan itself was wrong and the query followed it. Two of the questions that broke with the plan return a correct answer plus an extra column, the total the plan mentions; with that column dropped both match the gold query. These are labelled "other". So the 7b model can often break a question into the right steps, but its SQL does not follow them, and on the hardest questions it cannot break them down. Only main-set failures were read, by the held-out rule.
 
 The numbers come from the files in [results/processed/summaries/](results/processed/summaries/), one per run. Numbers count as equal when they differ by at most 0.005, so an answer rounded to two decimals is accepted. The tolerance was 0.001 until run 7, where one query was right except for rounding; every failure of runs 1 to 6 was re-checked at 0.005 and none changes, so their summary files still record 0.001.
 
