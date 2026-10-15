@@ -25,14 +25,14 @@ Work in progress. The plan and the session log are in [PROJECT.md](PROJECT.md).
 | Baseline assistant (question to SQL to result) | Done |
 | Manual validation of the ingest | Done |
 | Evaluation set (34 questions with gold SQL, plus 16 held-out) and harness | Done |
-| Model and prompt experiments | Results table and schema-detail experiment done; plan-before-SQL experiment not run |
+| Model and prompt experiments | Results table, schema-detail and plan-before-SQL experiments done |
 | Synthetic data, so others can run it | Not started |
 
 ## Results
 
 The evaluation set has 34 questions: 27 that the table can answer and 7 that it cannot, where the right reply is to decline. A generated query counts as correct when it returns the same result as the gold query on a frozen copy of the database. All runs are on my real data, so only aggregate metrics are published. Every run is at temperature 0 on the same 34 questions. A separate set of 16 held-out questions, written after these runs, checks which of the results carry over to new questions; see [Held-out check](#held-out-check).
 
-Configurations, in the order they were run. "Examples v1" is three worked SQL examples in the prompt ([configs/fewshot_v1.yaml](configs/fewshot_v1.yaml)); "examples v2" adds one example of declining ([configs/fewshot_v2.yaml](configs/fewshot_v2.yaml)). "Retry" sends a query that failed back to the model once, with the error message. "Minimal schema" replaces the schema description [docs/schema.md](docs/schema.md) with [configs/schema_minimal.md](configs/schema_minimal.md): a `CREATE TABLE` statement with column names and types, the allowed values of `activity_type` and `sport_group`, and the rule for what "runs" means, but no units, column descriptions or notes on writing queries.
+Configurations, in the order they were run. "Examples v1" is three worked SQL examples in the prompt ([configs/fewshot_v1.yaml](configs/fewshot_v1.yaml)); "examples v2" adds one example of declining ([configs/fewshot_v2.yaml](configs/fewshot_v2.yaml)). "Retry" sends a query that failed back to the model once, with the error message. "Minimal schema" replaces the schema description [docs/schema.md](docs/schema.md) with [configs/schema_minimal.md](configs/schema_minimal.md): a `CREATE TABLE` statement with column names and types, the allowed values of `activity_type` and `sport_group`, and the rule for what "runs" means, but no units, column descriptions or notes on writing queries. "Plan" asks the model to write a short plan as SQL comments, one line per step, before the query (`--plan`), with "examples v3" ([configs/fewshot_v3.yaml](configs/fewshot_v3.yaml)): the v2 examples with such a plan before each query.
 
 | # | Model | Prompt | Retry | Run |
 |---|---|---|---|---|
@@ -44,6 +44,7 @@ Configurations, in the order they were run. "Examples v1" is three worked SQL ex
 | 6 | `qwen2.5-coder:7b` | examples v2 | yes | `qwen2.5-coder_7b-3ff49b60` |
 | 7 | `ministral-3:8b` | examples v2 | yes | `ministral-3_8b-22cea93a` |
 | 8 | `qwen2.5-coder:7b` | examples v2, minimal schema | yes | `qwen2.5-coder_7b-37256498` |
+| 9 | `qwen2.5-coder:7b` | examples v3, plan | yes | `qwen2.5-coder_7b-1df20b74` |
 
 ### Accuracy
 
@@ -57,6 +58,7 @@ Configurations, in the order they were run. "Examples v1" is three worked SQL ex
 | 6 | 23 of 34 | 17 of 27 | 26 of 28 | 6 of 7 | 0 of 27 | 8 of 9 | 6 of 7 | 1 of 5 | 2 of 6 |
 | 7 | 21 of 34 | 17 of 27 | 27 of 30 | 4 of 7 | 0 of 27 | 9 of 9 | 6 of 7 | 0 of 5 | 2 of 6 |
 | 8 | 22 of 34 | 17 of 27 | 27 of 29 | 5 of 7 | 0 of 27 | 9 of 9 | 5 of 7 | 1 of 5 | 2 of 6 |
+| 9 | 22 of 34 | 16 of 27 | 27 of 28 | 6 of 7 | 0 of 27 | 9 of 9 | 4 of 7 | 1 of 5 | 2 of 6 |
 
 Execution accuracy counts the 27 answerable questions. Valid SQL counts the replies that were queries rather than declines, and how many of them passed the guardrail and ran. With retry, the second reply is the one scored.
 
@@ -66,6 +68,7 @@ Execution accuracy counts the 27 answerable questions. Valid SQL counts the repl
 | 6 | 21 of 34 | 6 | 2 | 4 |
 | 7 | 19 of 34 | 6 | 2 | 3 |
 | 8 | 21 of 34 | 3 | 1 | 1 |
+| 9 | 20 of 34 | 6 | 2 | 5 |
 
 ### Speed
 
@@ -80,8 +83,9 @@ Medians per question, CPU-only (hardware below).
 | 5, 6 | not comparable | not comparable | not comparable | 1382.5 | 61.0 |
 | 7 | 3.60 s | 31.86 s | 3.22 | 1437.5 | 79.5 |
 | 8 | 2.68 s | 18.42 s | 4.32 | 791.5 | 57.5 |
+| 9 | 3.05 s | 31.58 s | 3.98 | 1503.0 | 103.0 |
 
-Runs 5 and 6 reuse the cached first replies of run 4, with their old timings, so their speed does not describe live use. Run 7 generated its replies live, except four first replies cached from a smoke test, including its slowest request (136 s to the first token, a cold start). Run 8 generated all its replies live, because the changed schema gives every request a new cache key. The fairest speed comparison between the two models is generated tokens per second: about 4.5 for `qwen2.5-coder:7b` and 3.2 for `ministral-3:8b`.
+Runs 5 and 6 reuse the cached first replies of run 4, with their old timings, so their speed does not describe live use. Run 7 generated its replies live, except four first replies cached from a smoke test, including its slowest request (136 s to the first token, a cold start). Runs 8 and 9 generated all their replies live, because the changed prompt gives every request a new cache key. The fairest speed comparison between the two models is generated tokens per second: about 4.5 for `qwen2.5-coder:7b` and 3.2 for `ministral-3:8b`.
 
 ### What the runs show
 
@@ -92,6 +96,7 @@ These are results on the main set, which the prompt was tuned on. The held-out c
 - The retry fixed 2 of the 6 failed first replies in each retry run. In run 5 the retry message offered declining as a way out, and on 3 questions the model gave up on a question it could have answered. With that option removed (run 6) it no longer declined them, but it did not fix them either.
 - A second model family, `ministral-3:8b` with the best configuration, matches qwen on answerable questions (17 of 27 each) and is behind on unanswerable ones (4 of 7 declined against 6). It generates about 30% fewer tokens per second. The examples and the retry message were written after reading qwen's failures, which may favour qwen.
 - The column descriptions do not help. With only names, types and category values (run 8) the best configuration scores 17 of 27 on answerable questions, the same as with the full description (run 6), on a prompt about 43% shorter (791.5 against 1382.5 median prompt tokens). Six questions changed verdict between the two runs, in both directions. The failure labels pointed this way: wrong columns and wrong units are rare in every labelled run.
+- A plan before the query (run 9) did not help either: 16 of 27 answerable questions against 17, with window and multi-step questions unchanged at 1 of 5 and 2 of 6. The model did write the plans (28 of 34 first replies start with one; the other 6 are declines), and generated about 70% more tokens per answer (103 against 61 median). Eight questions changed verdict, in both directions.
 - Window-function questions are the weak spot of every configuration: 1 of 5 at best. Multi-step questions are at most 2 of 6.
 - Between runs 3 and 4, two answerable questions flipped from correct to wrong for reasons unrelated to the added example. With 27 answerable questions, a difference of about two questions is noise.
 
@@ -101,24 +106,26 @@ The examples and the retry message were written after reading failures on these 
 
 ### Held-out check
 
-To test that, 16 new questions ([eval/questions_heldout.yaml](eval/questions_heldout.yaml)) were written after the runs above, with a similar mix: 3 simple, 3 date logic, 4 window, 3 multi-step and 3 unanswerable. They were verified on the real data like the main set, and no prompt change may be based on the model's failures on them. The two ends of the tuning were run on them with `qwen2.5-coder:7b`, the best configuration with `ministral-3:8b`, and the best configuration with the minimal schema:
+To test that, 16 new questions ([eval/questions_heldout.yaml](eval/questions_heldout.yaml)) were written after the runs above, with a similar mix: 3 simple, 3 date logic, 4 window, 3 multi-step and 3 unanswerable. They were verified on the real data like the main set, and no prompt change may be based on the model's failures on them. The two ends of the tuning were run on them with `qwen2.5-coder:7b`, the best configuration with `ministral-3:8b`, and the best configuration with the minimal schema and with a plan:
 
-|                                        | qwen 7b, zero-shot (as run 2) | qwen 7b, examples v2 and retry (as run 6) | ministral 8b, examples v2 and retry (as run 7) | qwen 7b, minimal schema (as run 8) |
-| -------------------------------------- | ----------------------------- | ----------------------------------------- | ---------------------------------------------- | ---------------------------------- |
-| Correct overall                        | 7 of 16                       | 7 of 16                                   | 7 of 16                                        | 8 of 16                            |
-| Execution accuracy                     | 6 of 13                       | 6 of 13                                   | 7 of 13                                        | 7 of 13                            |
-| Valid SQL                              | 10 of 15                      | 13 of 15                                  | 15 of 16                                       | 14 of 15                           |
-| Unanswerable declined                  | 1 of 3                        | 1 of 3                                    | 0 of 3                                         | 1 of 3                             |
-| Fixed by the retry                     |                               | 0 of 4                                    | 1 of 3                                         | 0 of 3                             |
-| Simple, date logic, window, multi-step | 3/3, 2/3, 0/4, 1/3            | 3/3, 1/3, 1/4, 1/3                        | 3/3, 2/3, 1/4, 1/3                             | 3/3, 1/3, 1/4, 2/3                 |
-| Median latency                         | 17.16 s                       | 28.26 s                                   | 36.32 s                                        | 20.74 s                            |
-| Run                                    | `qwen2.5-coder_7b-e61d0f58`   | `qwen2.5-coder_7b-dc128d9a`               | `ministral-3_8b-b0bb4e2c`                      | `qwen2.5-coder_7b-2dc2c765`        |
+|                                        | qwen 7b, zero-shot (as run 2) | qwen 7b, examples v2 and retry (as run 6) | ministral 8b, examples v2 and retry (as run 7) | qwen 7b, minimal schema (as run 8) | qwen 7b, plan (as run 9) |
+| -------------------------------------- | ----------------------------- | ----------------------------------------- | ---------------------------------------------- | ---------------------------------- | ------------------------ |
+| Correct overall                        | 7 of 16                       | 7 of 16                                   | 7 of 16                                        | 8 of 16                            | 6 of 16                  |
+| Execution accuracy                     | 6 of 13                       | 6 of 13                                   | 7 of 13                                        | 7 of 13                            | 5 of 13                  |
+| Valid SQL                              | 10 of 15                      | 13 of 15                                  | 15 of 16                                       | 14 of 15                           | 13 of 15                 |
+| Unanswerable declined                  | 1 of 3                        | 1 of 3                                    | 0 of 3                                         | 1 of 3                             | 1 of 3                   |
+| Fixed by the retry                     |                               | 0 of 4                                    | 1 of 3                                         | 0 of 3                             | 0 of 3                   |
+| Simple, date logic, window, multi-step | 3/3, 2/3, 0/4, 1/3            | 3/3, 1/3, 1/4, 1/3                        | 3/3, 2/3, 1/4, 1/3                             | 3/3, 1/3, 1/4, 2/3                 | 3/3, 1/3, 0/4, 1/3       |
+| Median latency                         | 17.16 s                       | 28.26 s                                   | 36.32 s                                        | 20.74 s                            | 34.7 s                   |
+| Run                                    | `qwen2.5-coder_7b-e61d0f58`   | `qwen2.5-coder_7b-dc128d9a`               | `ministral-3_8b-b0bb4e2c`                      | `qwen2.5-coder_7b-2dc2c765`        | `qwen2.5-coder_7b-1ce29e57` |
 
 On the main set the same two configurations score 17 and 23 of 34. On the held-out questions they score the same. The examples make more queries run, but the extra queries are wrong, and the decline example does not raise the declines. The six-question gain on the main set is therefore best read as fitted to those questions, not as a general improvement. Sixteen questions is a small set and does not prove that the effect is zero, but zero-shot scores about the same share on both sets (44% and 50%), so the held-out questions are not simply harder.
 
 The model comparison holds on the held-out set: `ministral-3:8b` is level with qwen on answerable questions (7 of 13 against 6 of 13, within noise) and declines none of the three unanswerable ones, against one for qwen. It was the slowest of the three runs.
 
 The minimal schema holds on the held-out set too: 7 of 13 answerable questions against 6 of 13 with the full description, a difference of one question. The schema description was written before any of the runs, so this comparison is not affected by tuning on the main set.
+
+The plan does not help on the held-out set: 5 of 13 answerable questions against 6 of 13, and none of the 4 window questions. Neither more context about the table nor a written plan moves the window and multi-step questions with this model.
 
 ### Why the queries fail
 
@@ -155,6 +162,7 @@ The model is reached only through the OpenAI-compatible API, so a different serv
 - Every model reply is cached on disk, keyed by the full request, so an interrupted run continues where it stopped.
 - `--examples` adds the worked examples in a file such as [configs/fewshot_v2.yaml](configs/fewshot_v2.yaml) to the prompt. The examples are not eval questions.
 - `--retry` sends a failed query back to the model once, with the error message.
+- `--plan` asks for a short plan as SQL comments before the query. The comments keep the reply a single valid query, so the guardrail and DuckDB need no change; a decline after comment lines still counts as a decline.
 - `--schema` replaces the schema description in the prompt, for example with [configs/schema_minimal.md](configs/schema_minimal.md). The schema is part of the system prompt, whose hash is in the run name.
 - `eval/summarize.py` writes the aggregate metrics for a run.
 
