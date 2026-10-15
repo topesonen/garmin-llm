@@ -7,6 +7,9 @@ the same way app.py does, and compare the two results.
 With --retry, a query that the guardrail or DuckDB refuses is sent back to
 the model once with the error message, and the second reply is the one scored.
 
+With --plan, the model is asked to write a short plan as SQL comments before
+the query.
+
 Stopping and restarting is safe. Replies are cached, so a second run asks the
 model only for what is missing and scores everything again.
 
@@ -17,7 +20,7 @@ Output: results/raw/real/<run name>/run.json with the configuration, and one
         aggregate metrics to results/processed/summaries/<run name>.json.
 
 Usage:
-    python eval/run_eval.py [--model TAG] [--schema MD] [--examples YAML] [--retry] [--ids q001 q002 ...] [--name NAME]
+    python eval/run_eval.py [--model TAG] [--schema MD] [--examples YAML] [--retry] [--plan] [--ids q001 q002 ...] [--name NAME]
 """
 
 import argparse
@@ -142,6 +145,7 @@ def main():
     parser.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA, help="schema description to put in the system prompt")
     parser.add_argument("--examples", type=Path, help="YAML file of worked examples to put in the prompt")
     parser.add_argument("--retry", action="store_true", help="send a failed query back to the model once, with the error")
+    parser.add_argument("--plan", action="store_true", help="ask for a plan as SQL comments before the query")
     parser.add_argument("--ids", nargs="+", help="run only these question ids")
     parser.add_argument("--name", help="run name; default is the model plus a hash of the configuration")
     args = parser.parse_args()
@@ -167,10 +171,10 @@ def main():
         raise SystemExit(f"{args.examples} repeats an eval question: {sorted(overlap)[0]}")
 
     ollama_version, model_digest = ollama_info(args.base_url, args.model)
-    example = build_request("", args.model, schema_path=args.schema)
+    example = build_request("", args.model, schema_path=args.schema, plan=args.plan)
     system_prompt = example["messages"][0]["content"]
     # Everything that defines this configuration. A change to any of it gives a new run folder.
-    # The schema is part of the system prompt, so another schema file changes its hash.
+    # The schema and the plan instruction are part of the system prompt, so they change its hash.
     config = {
         "model": args.model,
         "model_digest": model_digest,
@@ -205,6 +209,7 @@ def main():
         "examples_file": str(args.examples) if args.examples else None,
         "examples": [{"question": text, "sql": sql} for text, sql in examples],
         "retry": args.retry,
+        "plan": args.plan,
         "retry_prompt": RETRY_TEMPLATE if args.retry else None,
         "snapshot": snapshot["snapshot"],
         "questions_file": str(args.questions),
@@ -221,7 +226,7 @@ def main():
     print(f"run {name}: {len(questions)} questions, results in {out_dir}")
 
     for question in questions:
-        request = build_request(question["question"], args.model, examples, args.schema)
+        request = build_request(question["question"], args.model, examples, args.schema, args.plan)
         # The digest is part of the key: the same tag can point to a new model version.
         key = {"request": request, "model_digest": model_digest}
         response, from_cache = cached_call(

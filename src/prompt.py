@@ -19,15 +19,29 @@ DEFAULT_SCHEMA = Path("docs/schema.md")
 # What the model replies in place of SQL when the table cannot answer the question.
 DECLINE_TOKEN = "CANNOT_ANSWER"
 
-INSTRUCTIONS = (
-    "You translate questions about a person's training activities into SQL "
-    "for DuckDB.\n"
+# The reply line is the only part that changes with a plan. The plan is written
+# as SQL comments, so the reply stays one valid query.
+REPLY_LINE = (
     "Reply with exactly one SELECT query and nothing else: no explanation, "
     "no Markdown.\n"
-    "Use only the table and columns described below.\n"
-    "If the question cannot be answered from that table, reply with exactly "
-    f"{DECLINE_TOKEN} and nothing else."
 )
+PLAN_REPLY_LINE = (
+    "Start with a short plan as SQL comments, one line per step, then write "
+    "exactly one SELECT query. Nothing else: no other explanation, no Markdown.\n"
+)
+
+
+def instructions(plan=False):
+    """Return the instructions at the start of the system message."""
+    return (
+        "You translate questions about a person's training activities into SQL "
+        "for DuckDB.\n"
+        + (PLAN_REPLY_LINE if plan else REPLY_LINE)
+        + "Use only the table and columns described below.\n"
+        "If the question cannot be answered from that table, reply with exactly "
+        f"{DECLINE_TOKEN} and nothing else."
+    )
+
 
 # Sent after a query that the guardrail or DuckDB refused, for one more attempt.
 # The first version also offered the decline token here. The model then gave
@@ -44,10 +58,10 @@ def load_examples(path):
     return [(entry["question"].strip(), entry["sql"].strip()) for entry in entries]
 
 
-def build_messages(question, schema_path=DEFAULT_SCHEMA, examples=()):
+def build_messages(question, schema_path=DEFAULT_SCHEMA, examples=(), plan=False):
     """Return the messages list for the OpenAI-compatible chat endpoint."""
     schema = Path(schema_path).read_text().strip()
-    messages = [{"role": "system", "content": f"{INSTRUCTIONS}\n\n{schema}"}]
+    messages = [{"role": "system", "content": f"{instructions(plan)}\n\n{schema}"}]
     # Each example looks like a question the model already answered correctly.
     for example_question, example_sql in examples:
         messages.append({"role": "user", "content": example_question})

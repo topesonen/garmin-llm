@@ -33,15 +33,21 @@ def extract_sql(reply):
 
 
 def is_decline(sql):
-    """True if the extracted reply is the decline token and not a query."""
-    return sql.upper().startswith(DECLINE_TOKEN)
+    """True if the extracted reply is the decline token and not a query.
+
+    Comment lines before the token are skipped: with a plan in the prompt,
+    the model may explain in comments why it declines.
+    """
+    lines = [line.strip() for line in sql.splitlines()]
+    code = [line for line in lines if line and not line.startswith("--")]
+    return bool(code) and code[0].upper().startswith(DECLINE_TOKEN)
 
 
-def build_request(question, model=MODEL, examples=(), schema_path=DEFAULT_SCHEMA):
+def build_request(question, model=MODEL, examples=(), schema_path=DEFAULT_SCHEMA, plan=False):
     """Return everything that determines the reply; also the key for caching it."""
     return {
         "model": model,
-        "messages": build_messages(question, schema_path=schema_path, examples=examples),
+        "messages": build_messages(question, schema_path=schema_path, examples=examples, plan=plan),
         "temperature": 0,
         "seed": 0,
     }
