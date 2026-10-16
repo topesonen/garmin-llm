@@ -1,12 +1,13 @@
-# Local Text-to-SQL Assistant: Project Brief
+# Garmin stats app with a text-to-SQL assistant: Project Brief
 
 Shared brief for Topias and the coding agent (Claude Code). Read this file, `docs/schema.md` and `docs/data_notes.md` before starting any work.
 
-Two phases:
-- **Phase A (now):** a local assistant on Ollama that answers natural-language questions about personal Garmin training data by generating and running SQL against DuckDB, with an execution-based evaluation harness. Runs on a laptop with no usable GPU.
-- **Phase B (later):** run the same assistant against vLLM on a rented GPU and benchmark serving cost, latency and throughput under concurrent load.
+Phases:
+- **Phase A (done 2026-10-16): model selection study.** A local assistant on Ollama that answers natural-language questions about personal Garmin training data by generating and running SQL against DuckDB, with an execution-based evaluation harness. Local models and a hosted reference (`claude-haiku-5-5`) were measured on the same 50 verified questions; the results chose the production model.
+- **Phase C (now): the app.** A quick, neat way for Topias to see his Garmin stats, mainly from the phone: a dashboard of fixed stats plus the question box, with Haiku as the production model and the eval as the regression gate for every prompt or model change. Pivot decided by Topias on 2026-10-16: a hobby project that also shows AI engineering work to employers.
+- **Phase B (deferred, optional, Topias 2026-10-16):** run the assistant against vLLM on a rented GPU and benchmark serving cost, latency and throughput under concurrent load.
 
-The application talks to the model only through the OpenAI-compatible API, so switching from Ollama to vLLM is a config change, not a rewrite.
+The model is reached through one request format (`src/generate_sql.py` for OpenAI-compatible servers, `src/send_anthropic.py` for the hosted model), so changing the model is a config change, not a rewrite.
 
 ## Current status (2026-10-16)
 
@@ -55,9 +56,12 @@ Open:
 - Schema description of `avg_pace_s_per_km` corrected (2026-10-15, Topias, after the hosted run): it said "Average pace (timer time / distance)"; it now says the value is Garmin's pace based on timer time, rounded to whole seconds, so it can differ from timer_time_s / distance_km by a few seconds. Aggregate checks on the snapshot: all 302 run paces are whole seconds, 246 are within 0.5 s of timer time / distance, and moving time / distance is further off (median 6.08 s). The wording states the fact and gives no instruction to compute pace, so it is not tuned to q033. Recorded in `docs/data_notes.md`. The default system prompt changes with it: every run listed above used the old wording, and a rerun of any configuration with `docs/schema.md` gets a new name and new model calls. `configs/schema_minimal.md` has no descriptions and is unchanged.
 - Web UI for phone use (2026-10-15/16, decided by Topias, built by the agent): `src/app.py` now has `answer(question)`, which runs the whole pipeline and returns a dict with `status` (`declined`, `rejected`, `failed`, `ok`), the SQL, the error and the rows; the CLI only prints it (output checked unchanged against the old version on one aggregate question, all four statuses checked with a stub model on a throwaway database). `src/ui.py` is a Streamlit page (`streamlit==1.66.0`) that calls `answer()` and shows the model, latency, SQL and the result table or error; checked with Streamlit's `AppTest`. Phone access over Tailscale: `streamlit run src/ui.py --server.address $(tailscale ip -4) --server.port 8501` binds to the laptop's Tailscale address only (not reachable from the local network); opened from the phone by Topias. Works only while the laptop is on and online. Data ingestion stays the manual CSV export. Model: `qwen2.5-coder:1.5b` (the default in `generate_sql.py`) while testing the UI; Topias plans to use `claude-haiku-5-5` for real use, which the live app does not support yet.
 
+- M0 (2026-10-16): `README.md` reframed as the app; the Phase A results are now "How the model was chosen", with Topias's reason for the hosted model (local results not good enough, hardware costs more than the API). "How it works" and "Privacy" cover the live hosted model.
+- M1 in progress (2026-10-16): `generate_sql()` sends `claude-` models through `src/send_anthropic.py`, like the eval. `src/app.py` has its own default `claude-haiku-5-5` (`LLM_MODEL` or `--model` overrides it); the eval default in `generate_sql.py` stays `qwen2.5-coder:1.5b`, so a plain eval run never calls the paid API. Checked end to end on a throwaway database with invented rows. Topias found on the phone that "How long was my previous run" returned the two latest runs with many columns. Rules from Topias: "previous" and "last" mean the most recent; when "how long" is ambiguous, return both distance and duration. Added: a column rule in the instructions (`src/prompt.py`) and two query notes in `docs/schema.md`. A first wording ("not the one before it") made Haiku use `OFFSET 1` and was replaced. In spot checks Haiku sometimes still adds label columns and once put a sentence before the query, so `extract_sql` now starts at the first line beginning with `SELECT`, `WITH` or `--` when there is no code fence (Topias approved). Over all 416 cached replies only one extraction changes (Haiku's q033 reply). These change the system prompt; Haiku eval rerun on both sets is next. The page's copy button probably fails because the page is plain HTTP (clipboard needs HTTPS); to fix with `tailscale serve` in M3.
+
 Open:
 
-Next: web UI. Options: a start script or `.streamlit/config.toml` for the long command; Haiku as the live model in `app.py` (data and questions then go to Anthropic); possibly running the page on the always-on server `ubuntu-4gb-hel1-2` so it works with the laptop off (puts the DuckDB file on that server, Topias decides).
+Next: Phase C, M1: Haiku eval rerun as the production baseline, then M3 (server). Earlier options: a start script or `.streamlit/config.toml` for the long command; Haiku as the live model in `app.py` (data and questions then go to Anthropic); possibly running the page on the always-on server `ubuntu-4gb-hel1-2` so it works with the laptop off (puts the DuckDB file on that server, Topias decides).
 
 ## Why this project
 
@@ -156,10 +160,11 @@ Status: done 2026-10-08. The 17 failures of the first run on answerable question
 ### A5. Experiments
 Vary one thing at a time against the baseline: model, schema description detail, number of few-shot examples, error-feedback retry on/off.
 Done when: a results table compares configurations on all metrics, with raw results stored (aggregates only for real data, see privacy).
-Status: in progress 2026-10-09. Run so far: model size (1.5b and 7b), few-shot examples (0, 3, 3 plus one decline example), retry on and off. Second model family run on 2026-10-14 (`ministral-3:8b`). Schema description detail run on 2026-10-15 (less detail only), and a plan before the query on the same day (see Current status). Results table on all metrics written in `README.md` on 2026-10-14 (accuracy, retry, speed, error labels for four runs). The table in `README.md` covers correct overall, execution accuracy, declines and latency; a full table on all metrics is not written yet.
+Status: closed 2026-10-16 by the pivot to Phase C. Run: model size (1.5b and 7b), few-shot examples (0, 3, 3 plus one decline example), retry on and off. Second model family run on 2026-10-14 (`ministral-3:8b`). Schema description detail run on 2026-10-15 (less detail only), and a plan before the query on the same day (see Current status). Results table on all metrics written in `README.md` on 2026-10-14 (accuracy, retry, speed, error labels for four runs). The table in `README.md` covers correct overall, execution accuracy, declines and latency; a full table on all metrics is not written yet.
 
 ### A6. Interface (optional)
 Minimal UI for demos.
+Status: done 2026-10-16 (`src/ui.py`, Streamlit, phone access over Tailscale); continues as Phase C.
 
 ### A7. Synthetic data and public eval
 `scripts/make_synthetic.py` generates a fake `activities` table with the same schema and realistic distributions (including the quirks in `docs/data_notes.md`), plus a synthetic eval set, so the project runs for anyone without the real data.
@@ -181,7 +186,22 @@ Added 2026-10-06 by Topias. These make the project show the engineering side of 
 | Tests | Automated tests for extraction, guardrails and query execution, runnable without the real data | New. The checks done by hand in A2 are the starting point |
 | Package layout | Installable package with a `pyproject.toml` in place of loose scripts in `src/` | New. Changes the repo layout below |
 
-## Phase B: vLLM serving benchmark (after Phase A)
+## Phase C: the app (now)
+
+Goal: open the page on the phone and see current stats at once; ask anything else in plain language. Each milestone ships on its own, in small increments (one per session turn, explained). Plan agreed 2026-10-16.
+
+| Milestone | What | Status |
+|---|---|---|
+| M0. Reframe | This file and `README.md` describe the app; Phase A results kept as "how the model was chosen" | Done 2026-10-16 (not committed yet) |
+| M1. Haiku in the live app | Model chosen by config in `src/app.py`, reusing `src/send_anthropic.py`; Haiku default, `qwen2.5-coder:1.5b` for offline tests. Eval rerun on Haiku with the corrected schema wording as the production baseline | To do |
+| M2. Stats at a glance | Dashboard tab from fixed SQL, no model: this week and month, recent activities, trends, a few charts. Question box as the second tab | To do |
+| M3. Always on | Run on the server `ubuntu-4gb-hel1-2` as a systemd service, reachable over Tailscale only. The DuckDB file may live there (Topias, 2026-10-16); copied after each ingest, or ingested there | To do |
+| M4. Fresh data | Keep the manual CSV export, or sync automatically (unofficial `garminconnect`). Topias decides | To do |
+| M5. AI engineering depth | One at a time, Topias picks: eval as a pre-release check with a cost cap; charts from questions; multi-query tool use scored on the window and multi-step questions; a log of live questions (no rows) feeding new eval questions; optionally a short answer in words from the result rows (sends rows to the model, needs a privacy decision) | To do |
+
+Done when (each milestone): CLI and page answer a known aggregate question, the production model's eval summary is committed, status and session log updated.
+
+## Phase B: vLLM serving benchmark (deferred, optional)
 
 Run the assistant against vLLM on a rented GPU. Measure TTFT, inter-token latency, end-to-end latency (p50/p95/p99), output tokens/s, requests/s and cost per 1M output tokens across concurrency levels (e.g. 1, 4, 16, 64) and quantization settings (BF16, AWQ, GPTQ, FP8 where supported). Re-run the synthetic eval set on each setting to check execution accuracy does not degrade.
 
@@ -196,6 +216,7 @@ Phase B decisions (model, GPU provider, GPU type, spend cap) are made by Topias 
 - **`eval/questions.yaml` is public** (Topias, 2026-10-07). It holds question text and gold SQL only, and gold answers are computed at run time, so it contains no value from the real data. It was private while label-based questions were planned; those were dropped. Questions and notes must not contain label values, race names, places or query results.
 - **Aggregates of the real data in this public repo are there on purpose** (Topias, 2026-10-05). `docs/data_notes.md` and this file contain row counts, the date range, counts per check, and minimum, maximum and range values computed from the real activities. The handful of example labels in `docs/schema.md` were also approved for publication (2026-10-03); other label values stay private. Individual rows are not published.
 - **Hosted reference runs** (Topias, 2026-10-15): a hosted model may be called from the eval with the prompt only (instructions, schema, examples, question; all public). Queries and gold queries run locally. `--retry` is refused for hosted models in `run_eval.py`, because the retry message quotes DuckDB errors, which can contain values from the data.
+- **Live app with a hosted model** (Phase C): the model gets the instructions, schema and question only; the SQL runs on Topias's own machine or server, so result rows do not reach the model provider. Anything that would send rows or DuckDB error text to the model (an answer in words, a retry with the error) needs Topias's decision first. The page is reachable over Tailscale only.
 - **Claude Code is a cloud model.** Anything it reads or prints goes to Anthropic. During development, the agent works against the schema and synthetic data; it does not open `data/raw/`, does not print real rows, and checks real-data logic with aggregate queries (counts, null rates, min/max) unless Topias explicitly asks otherwise in the session.
 
 ## Repo layout
@@ -298,3 +319,4 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-15 | A5 | Hosted reference: `src/send_anthropic.py`, `anthropic` dependency, `--retry` refused for hosted models. `claude-haiku-5-5` zero-shot: 31 of 34 main (window 5 of 5), 16 of 16 held-out, about $0.013. Its three failures are output format; one exposed that the `avg_pace_s_per_km` description in `docs/schema.md` is approximate. README section added | Topias: next step after A5; decide on the schema wording; delete `~/.bashrc.bak` |
 | 2026-10-15 | A5 | `avg_pace_s_per_km` description in `docs/schema.md` corrected: rounded to whole seconds, based on timer time; checks recorded in `docs/data_notes.md`. Changes the default system prompt, so later runs get new names | Topias: next step after A5; delete `~/.bashrc.bak` |
 | 2026-10-16 | UI | Options for ingestion and phone access surveyed; Topias chose Streamlit over Tailscale and the manual CSV export. `answer()` split out of `src/app.py`, `src/ui.py` written, `streamlit==1.66.0` pinned; page bound to the Tailscale address and opened from the phone. Testing with `qwen2.5-coder:1.5b`; Haiku planned for real use | Topias: start script or config, Haiku in the live app, whether to host on the server |
+| 2026-10-16 | C | Pivot decided by Topias: the project becomes a Garmin stats app with Haiku as the production model; Phase A closed as the model selection study, Phase B deferred, the DuckDB file may live on the server. Phase C milestones and the live-app privacy rule added to this file | Agent: README reframe (M0), then M1 |

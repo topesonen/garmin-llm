@@ -1,6 +1,8 @@
 # garmin-llm
 
-A local assistant that answers questions about my Garmin training data. A small language model running on a laptop turns a question into SQL, the SQL is checked and run against a DuckDB database, and the result is printed. No data leaves the machine.
+A small app for looking at my Garmin training data, mostly from my phone. I ask a question in plain language; a language model turns it into SQL, the SQL is checked and run against a DuckDB database of my activities, and the page shows the query and the result. The model sees only the question and a description of the table. The queries run on my own machine, so the rows never reach the model.
+
+The model was chosen by measurement: local models on a laptop and one hosted model were run on the same 50 questions, each with a verified gold SQL query. See [How the model was chosen](#how-the-model-was-chosen).
 
 ```
 $ python src/app.py "How many runs did I do in 2025?"
@@ -20,15 +22,15 @@ Work in progress. The plan and the session log are in [PROJECT.md](PROJECT.md).
 
 | Part | State |
 |---|---|
-| Ingest of the Garmin Connect CSV export into DuckDB | Done |
-| Environment check and first speed measurement | Done |
-| Baseline assistant (question to SQL to result) | Done |
-| Manual validation of the ingest | Done |
-| Evaluation set (34 questions with gold SQL, plus 16 held-out) and harness | Done |
-| Model and prompt experiments | Results table, schema-detail and plan-before-SQL experiments done |
+| Ingest of the Garmin Connect CSV export into DuckDB, checked by hand | Done |
+| Question to SQL to result, on the command line and as a Streamlit page reached from the phone over Tailscale | Done, with a local model |
+| Model selection: evaluation set (34 questions plus 16 held-out), harness, experiments | Done |
+| The chosen model, `claude-haiku-5-5`, in the live app | Next |
+| A dashboard of fixed stats next to the question box | Planned |
+| Running on an always-on server | Planned |
 | Synthetic data, so others can run it | Not started |
 
-## Results
+## How the model was chosen
 
 The evaluation set has 34 questions: 27 that the table can answer and 7 that it cannot, where the right reply is to decline. A generated query counts as correct when it returns the same result as the gold query on a frozen copy of the database. All runs are on my real data, so only aggregate metrics are published. Every run is at temperature 0 on the same 34 questions. A separate set of 16 held-out questions, written after these runs, checks which of the results carry over to new questions; see [Held-out check](#held-out-check).
 
@@ -127,9 +129,11 @@ The minimal schema holds on the held-out set too: 7 of 13 answerable questions a
 
 The plan does not help on the held-out set: 5 of 13 answerable questions against 6 of 13, and none of the 4 window questions. Neither more context about the table nor a written plan moves the window and multi-step questions with this model.
 
-### Reference: a hosted model
+### The chosen model: a hosted one
 
-To check whether the questions themselves are hard, both sets were run once on a hosted model, `claude-haiku-5-5` (Claude Haiku 5.5) through the Anthropic API, zero-shot and without retry. The assistant itself stays local; this run is a reference point only. Only the prompt leaves the machine: instructions, schema and question, all of which are public in this repository. The queries run locally, and the retry is refused for hosted models because DuckDB error messages can quote values from the data. Haiku 5.5 accepts no temperature or seed, so its replies cannot be reproduced exactly; the stored replies make the scoring reproducible. Thinking was turned off, so it answers directly like the local models.
+The local models were not good enough to use. The best local configuration got 23 of 34 on the main set and 7 of 16 on the held-out set. It got at most 1 of 5 window questions, and neither more prompt work nor a written plan helped. A larger local model would need better hardware than this laptop. A hosted model answered nearly everything, for about a cent for all 50 questions. Paying for a hosted model costs much less than buying hardware, so `claude-haiku-5-5` is the model for the live app.
+
+At first this run was only a check of whether the questions themselves were too hard. Both sets were run once on `claude-haiku-5-5` (Claude Haiku 5.5) through the Anthropic API, zero-shot and without retry. Only the prompt leaves the machine: instructions, schema and question, all of which are public in this repository. The queries run locally, and the retry is refused for hosted models because DuckDB error messages can quote values from the data. Haiku 5.5 accepts no temperature or seed, so its replies cannot be reproduced exactly; the stored replies make the scoring reproducible. Thinking was turned off, so it answers directly like the local models.
 
 |                                        | qwen 7b, zero-shot (run 2)    | qwen 7b, best (run 6)         | Haiku 5.5, zero-shot          |
 | -------------------------------------- | ----------------------------- | ----------------------------- | ----------------------------- |
@@ -175,9 +179,9 @@ The numbers come from the files in [results/processed/summaries/](results/proces
 3. `src/guardrails.py` allows only a single `SELECT` that reads the `activities` table, using DuckDB's own parser.
 4. `src/app.py` runs the query on a read-only connection with no file or network access, a timeout and a row limit.
 
-The model is reached only through the OpenAI-compatible API, so a different server can be used by setting `LLM_BASE_URL` and `LLM_MODEL`.
+`src/ui.py` is a Streamlit page over the same pipeline, opened from the phone over Tailscale.
 
-For the hosted reference run only, `eval/run_eval.py` sends models whose name starts with `claude-` through the Anthropic Python SDK (`src/send_anthropic.py`), with the same prompt text.
+Local models are reached through the OpenAI-compatible API, so a different server can be used by setting `LLM_BASE_URL` and `LLM_MODEL`. Models whose name starts with `claude-` go through the Anthropic Python SDK (`src/send_anthropic.py`) with the same prompt text. The eval uses this already. The live app still runs `qwen2.5-coder:1.5b`; switching it to `claude-haiku-5-5` is the next step.
 
 ## How it is evaluated
 
@@ -230,7 +234,8 @@ The gold queries in `eval/questions.yaml` were verified against my data. On anot
 - The raw export, the database and anything derived from individual activities are gitignored.
 - Activity titles are not loaded as they are; leading place names are removed, and the table has no location columns.
 - Aggregate figures about the real data (row counts, date range, ranges) appear in the docs on purpose. Individual activities are not published.
-- The hosted reference run sends only the prompt (instructions, schema, examples, question) to the Anthropic API. Queries run locally, and the retry, whose message can quote values from the data, is refused for hosted models.
+- With a hosted model, in the eval or in the live app, only the prompt goes to the Anthropic API: instructions, schema, examples and the question. The query runs on my own machine, so result rows never reach the model provider. The retry is refused for hosted models, because its message can quote values from the data. Anything else that would send rows or DuckDB error text to the model, such as an answer in words, needs a separate decision first.
+- The page is reachable over Tailscale only, not from the public internet.
 
 The rules are in the Privacy section of [PROJECT.md](PROJECT.md).
 
