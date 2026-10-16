@@ -8,7 +8,7 @@ Two phases:
 
 The application talks to the model only through the OpenAI-compatible API, so switching from Ollama to vLLM is a config change, not a rewrite.
 
-## Current status (2026-10-14)
+## Current status (2026-10-16)
 
 Done:
 - Data source: Garmin Connect activities CSV export (`Activities.csv`), stored in `data/raw/` (gitignored).
@@ -53,10 +53,11 @@ Open:
 - Hosted reference (2026-10-15, decided by Topias, run by the agent): `claude-haiku-5-5` through the Anthropic SDK (`anthropic==1.14.0` added), zero-shot, no retry, thinking off, `max_tokens` 4096. The SDK is used rather than an OpenAI-compatible endpoint, following Anthropic's guidance; `src/send_anthropic.py` converts the same request (system message to the `system` field) and returns the same fields as the Ollama sender plus `served_model`. Haiku 5.5 accepts no temperature or seed, so `run.json` records both as null. Smoke run `smoke-haiku` (q001, correct). Main set, run `claude-haiku-5-5-995023bf`: 31 of 34 correct, execution accuracy 24 of 27, declined 7 of 7; simple 8 of 9, date logic 6 of 7, window 5 of 5, multi-step 5 of 6. Held-out, run `claude-haiku-5-5-c34994c1`: 16 of 16. Median latency 1.17 s (main), 1.32 s (held-out). Tokens over both runs: 96,421 in, 5,902 out, about $0.013 at $0.10 and $0.50 per million. The three main-set failures, read by the agent (main set only): q007 and q031 return extra columns and match the gold query once they are dropped (checked on the snapshot, true or false only); q033 puts a sentence before the query, so the guardrail refuses it, and the query, though well formed, uses `avg_pace_s_per_km` where the question asks for timer time divided by distance. Conclusion: the questions and gold queries hold up; the local models' window and multi-step failures are model capacity. Both runs record uncommitted changes (the code was committed after them). The key was first added to `~/.bashrc` without `export` and after the non-interactive return; moved to the top with `export`. The agent's shell keeps the environment from session start, so it sources `~/.bashrc` before hosted runs.
 
 - Schema description of `avg_pace_s_per_km` corrected (2026-10-15, Topias, after the hosted run): it said "Average pace (timer time / distance)"; it now says the value is Garmin's pace based on timer time, rounded to whole seconds, so it can differ from timer_time_s / distance_km by a few seconds. Aggregate checks on the snapshot: all 302 run paces are whole seconds, 246 are within 0.5 s of timer time / distance, and moving time / distance is further off (median 6.08 s). The wording states the fact and gives no instruction to compute pace, so it is not tuned to q033. Recorded in `docs/data_notes.md`. The default system prompt changes with it: every run listed above used the old wording, and a rerun of any configuration with `docs/schema.md` gets a new name and new model calls. `configs/schema_minimal.md` has no descriptions and is unchanged.
+- Web UI for phone use (2026-10-15/16, decided by Topias, built by the agent): `src/app.py` now has `answer(question)`, which runs the whole pipeline and returns a dict with `status` (`declined`, `rejected`, `failed`, `ok`), the SQL, the error and the rows; the CLI only prints it (output checked unchanged against the old version on one aggregate question, all four statuses checked with a stub model on a throwaway database). `src/ui.py` is a Streamlit page (`streamlit==1.66.0`) that calls `answer()` and shows the model, latency, SQL and the result table or error; checked with Streamlit's `AppTest`. Phone access over Tailscale: `streamlit run src/ui.py --server.address $(tailscale ip -4) --server.port 8501` binds to the laptop's Tailscale address only (not reachable from the local network); opened from the phone by Topias. Works only while the laptop is on and online. Data ingestion stays the manual CSV export. Model: `qwen2.5-coder:1.5b` (the default in `generate_sql.py`) while testing the UI; Topias plans to use `claude-haiku-5-5` for real use, which the live app does not support yet.
 
 Open:
 
-Next: Topias decides what follows A5. The README has both experiments, the plan labels and the hosted reference.
+Next: web UI. Options: a start script or `.streamlit/config.toml` for the long command; Haiku as the live model in `app.py` (data and questions then go to Anthropic); possibly running the page on the always-on server `ubuntu-4gb-hel1-2` so it works with the laptop off (puts the DuckDB file on that server, Topias decides).
 
 ## Why this project
 
@@ -88,14 +89,14 @@ Implications:
 | Generator models (2 to 3) | Small models from the Ollama library, including at least one code/SQL-oriented model if available, plus one 7B/8B for comparison. Verify availability and licence at decision time. | Partly decided: `qwen2.5-coder:1.5b` (baseline) and `qwen2.5-coder:7b` (Topias, 2026-10-08), both Apache 2.0. Second family (2026-10-14): `ministral-3:8b`, Apache 2.0, after `duckdb-nsql:7b` scored 0 of 4 in a smoke test. Hosted reference (2026-10-15): `claude-haiku-5-5`, zero-shot, no retry, thinking off; a reference point, not a generator for the assistant |
 | Exclude accidental short activities in eval questions | Yes / no, and threshold | TBD |
 | Full Garmin account export later (FIT files, sleep, VO2max) | See `GARMIN_SETUP.md`. Not needed for v1. | Deferred |
-| Interface | CLI only, or a minimal web UI (e.g. Streamlit or Gradio) | TBD |
+| Interface | CLI only, or a minimal web UI (e.g. Streamlit or Gradio) | Decided 2026-10-15: CLI plus a Streamlit page (`src/ui.py`), reached from the phone over Tailscale. Ingestion stays the manual CSV export (alternatives considered: unofficial `garminconnect` API, Strava or intervals.icu API, full account export) |
 | Repo name and visibility | | Decided 2026-10-03: `garmin-llm`, public |
 | GPU use in Phase A | CPU-only, or install the NVIDIA driver and test offload to the MX250 | Decided 2026-10-03: CPU-only |
 | How `docs/validation.md` stays private | Gitignore the file, or record only pass/fail per field with no values. `docs/` is committed and the repo is public. | Decided 2026-10-05: pass/fail per field only in `docs/validation.md`; the compared values go in `data/private/validation_values.md` (gitignored) |
 
 ## Stack
 
-- Python, pinned dependencies in `requirements.txt` (currently duckdb, openai, pandas, PyYAML).
+- Python, pinned dependencies in `requirements.txt` (currently anthropic, duckdb, openai, pandas, PyYAML, streamlit).
 - DuckDB as the warehouse (`data/warehouse/garmin.duckdb`).
 - Ollama for generation, accessed through the OpenAI Python client and the Ollama OpenAI-compatible endpoint. Check the current Ollama docs for supported endpoints before relying on them.
 - Anthropic Python SDK (`anthropic`) for the hosted reference run only (`src/send_anthropic.py`). The key is read from `ANTHROPIC_API_KEY`, set in the user's shell profile, never in the repo.
@@ -219,7 +220,9 @@ garmin-llm/
     prompt.py             done
     generate_sql.py       done
     guardrails.py         done
-    app.py                done
+    app.py                done; answer() is the pipeline, main() the CLI
+    ui.py                 Streamlit page over answer()
+    send_anthropic.py     hosted reference runs
   eval/
     questions.yaml        done; questions and gold SQL only, no answers
     questions_synthetic.yaml
@@ -294,3 +297,4 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-15 | A5 | Plan run's main-set failures labelled (pre-filled by the agent, checked by Topias): 11 failures, 3 missing step, 2 date logic, 1 aggregation, 5 other; plan right in 6, vague in 3, wrong in 2; two new failures are a correct answer plus an extra column. README error table and plan finding added | Topias: decide what follows A5 |
 | 2026-10-15 | A5 | Hosted reference: `src/send_anthropic.py`, `anthropic` dependency, `--retry` refused for hosted models. `claude-haiku-5-5` zero-shot: 31 of 34 main (window 5 of 5), 16 of 16 held-out, about $0.013. Its three failures are output format; one exposed that the `avg_pace_s_per_km` description in `docs/schema.md` is approximate. README section added | Topias: next step after A5; decide on the schema wording; delete `~/.bashrc.bak` |
 | 2026-10-15 | A5 | `avg_pace_s_per_km` description in `docs/schema.md` corrected: rounded to whole seconds, based on timer time; checks recorded in `docs/data_notes.md`. Changes the default system prompt, so later runs get new names | Topias: next step after A5; delete `~/.bashrc.bak` |
+| 2026-10-16 | UI | Options for ingestion and phone access surveyed; Topias chose Streamlit over Tailscale and the manual CSV export. `answer()` split out of `src/app.py`, `src/ui.py` written, `streamlit==1.66.0` pinned; page bound to the Tailscale address and opened from the phone. Testing with `qwen2.5-coder:1.5b`; Haiku planned for real use | Topias: start script or config, Haiku in the live app, whether to host on the server |

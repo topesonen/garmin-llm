@@ -47,6 +47,37 @@ def run_query(sql, db_path=DEFAULT_DB, max_rows=DEFAULT_MAX_ROWS, timeout_s=DEFA
     return columns, rows[:max_rows], truncated
 
 
+def answer(question, db_path=DEFAULT_DB, max_rows=DEFAULT_MAX_ROWS, timeout_s=DEFAULT_TIMEOUT_S):
+    """Run the whole pipeline for one question and return the outcome, without printing.
+
+    "status" is one of: "declined" (the model says the data cannot answer it),
+    "rejected" (the guardrail refused the SQL), "failed" (DuckDB error or
+    timeout), "ok". "error" holds the reason for "rejected" and "failed".
+    """
+    generated = generate_sql(question)
+    result = {
+        "model": generated["model"],
+        "latency_s": generated["latency_s"],
+        "sql": generated["sql"],
+        "error": None,
+        "columns": None,
+        "rows": None,
+        "truncated": False,
+    }
+    if generated["declined"]:
+        return {**result, "status": "declined"}
+
+    ok, reason = check_sql(generated["sql"])
+    if not ok:
+        return {**result, "status": "rejected", "error": reason}
+
+    try:
+        columns, rows, truncated = run_query(generated["sql"], db_path, max_rows, timeout_s)
+    except (duckdb.Error, TimeoutError) as error:
+        return {**result, "status": "failed", "error": str(error).splitlines()[0]}
+    return {**result, "status": "ok", "columns": columns, "rows": rows, "truncated": truncated}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("question")
@@ -55,28 +86,24 @@ def main():
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     args = parser.parse_args()
 
-    generated = generate_sql(args.question)
-    if generated["declined"]:
-        print(f"The model says this cannot be answered from the data ({generated['model']}).")
+    result = answer(args.question, args.db, args.max_rows, args.timeout)
+    if result["status"] == "declined":
+        print(f"The model says this cannot be answered from the data ({result['model']}).")
         return 0
-    print(f"SQL ({generated['model']}, {generated['latency_s']:.1f} s):")
-    print(generated["sql"])
+    print(f"SQL ({result['model']}, {result['latency_s']:.1f} s):")
+    print(result["sql"])
     print()
 
-    ok, reason = check_sql(generated["sql"])
-    if not ok:
-        print(f"Not run, {reason}")
+    if result["status"] == "rejected":
+        print(f"Not run, {result['error']}")
         return 1
-
-    try:
-        columns, rows, truncated = run_query(generated["sql"], args.db, args.max_rows, args.timeout)
-    except (duckdb.Error, TimeoutError) as error:
-        print(f"Query failed: {str(error).splitlines()[0]}")
+    if result["status"] == "failed":
+        print(f"Query failed: {result['error']}")
         return 1
 
     print("Result:")
-    print(pd.DataFrame(rows, columns=columns).to_string(index=False))
-    if truncated:
+    print(pd.DataFrame(result["rows"], columns=result["columns"]).to_string(index=False))
+    if result["truncated"]:
         print(f"(first {args.max_rows} rows shown)")
     return 0
 
