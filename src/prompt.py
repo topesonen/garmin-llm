@@ -38,6 +38,9 @@ def instructions(plan=False):
         "for DuckDB.\n"
         + (PLAN_REPLY_LINE if plan else REPLY_LINE)
         + "Use only the table and columns described below.\n"
+        "Return only the columns that answer the question. When the question "
+        "could mean more than one measure, such as distance or time for "
+        '"how long", return each of them rather than choosing one.\n'
         "If the question cannot be answered from that table, reply with exactly "
         f"{DECLINE_TOKEN} and nothing else."
     )

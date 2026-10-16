@@ -2,6 +2,8 @@
 
 Talks to any OpenAI-compatible chat endpoint. The defaults point at the local
 Ollama server; set LLM_BASE_URL, LLM_MODEL and LLM_API_KEY to use another one.
+A model whose name starts with claude- goes through the Anthropic API instead
+(send_anthropic.py), with the same prompt text.
 
 Usage:
     python src/generate_sql.py "How many runs did I do in 2025?"
@@ -15,6 +17,7 @@ import time
 from openai import OpenAI
 
 from prompt import DECLINE_TOKEN, DEFAULT_SCHEMA, build_messages, build_retry_messages
+from send_anthropic import is_hosted, send_anthropic, to_anthropic_request
 
 BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1")
 MODEL = os.environ.get("LLM_MODEL", "qwen2.5-coder:1.5b")
@@ -23,13 +26,23 @@ API_KEY = os.environ.get("LLM_API_KEY", "ollama")
 
 # First Markdown code fence in a reply, with an optional language tag.
 FENCE = re.compile(r"```[a-zA-Z]*\s*\n(.*?)```", re.DOTALL)
+# First line that starts a query: SELECT, WITH, or a comment (a plan before the query).
+QUERY_START = re.compile(r"^[ \t]*(SELECT\b|WITH\b|--)", re.IGNORECASE | re.MULTILINE)
 
 
 def extract_sql(reply):
-    """Return the SQL in a model reply: the first fenced block, else all of it."""
+    """Return the SQL in a model reply.
+
+    The first fenced block if there is one. Otherwise the reply from the first
+    line that starts a query, so a sentence the model wrote before the query
+    is dropped. A reply with no such line is returned whole, which keeps a
+    decline intact; the guardrail checks whatever comes back.
+    """
     match = FENCE.search(reply)
-    sql = match.group(1) if match else reply
-    return sql.strip()
+    if match:
+        return match.group(1).strip()
+    start = QUERY_START.search(reply)
+    return reply[start.start():].strip() if start else reply.strip()
 
 
 def is_decline(sql):
@@ -94,7 +107,11 @@ def send(request, base_url=BASE_URL):
 
 def generate_sql(question, model=MODEL, base_url=BASE_URL):
     """Send one question to the model. Returns the raw reply, the SQL and timing."""
-    response = send(build_request(question, model), base_url)
+    request = build_request(question, model)
+    if is_hosted(model):
+        response = send_anthropic(to_anthropic_request(request))
+    else:
+        response = send(request, base_url)
     sql = extract_sql(response["reply"])
     return {"model": model, **response, "sql": sql, "declined": is_decline(sql)}
 

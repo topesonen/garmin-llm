@@ -3,12 +3,17 @@
 Steps: build the prompt, ask the model for SQL, check it with the guardrails,
 run it on a locked-down connection, print the SQL and the result.
 
+The model is claude-haiku-5-5, chosen by the eval. Set LLM_MODEL or pass
+--model to use another, for example qwen2.5-coder:1.5b on the local Ollama
+server for offline tests. The eval keeps its own default in generate_sql.py.
+
 Usage:
-    python src/app.py "How many runs did I do in 2025?" [--db PATH]
-                      [--max-rows N] [--timeout SECONDS]
+    python src/app.py "How many runs did I do in 2025?" [--model NAME]
+                      [--db PATH] [--max-rows N] [--timeout SECONDS]
 """
 
 import argparse
+import os
 import threading
 from pathlib import Path
 
@@ -18,6 +23,7 @@ import pandas as pd
 from generate_sql import generate_sql
 from guardrails import check_sql
 
+MODEL = os.environ.get("LLM_MODEL", "claude-haiku-5-5")
 DEFAULT_DB = Path("data/warehouse/garmin.duckdb")
 DEFAULT_MAX_ROWS = 50
 DEFAULT_TIMEOUT_S = 10
@@ -47,14 +53,16 @@ def run_query(sql, db_path=DEFAULT_DB, max_rows=DEFAULT_MAX_ROWS, timeout_s=DEFA
     return columns, rows[:max_rows], truncated
 
 
-def answer(question, db_path=DEFAULT_DB, max_rows=DEFAULT_MAX_ROWS, timeout_s=DEFAULT_TIMEOUT_S):
+def answer(
+    question, db_path=DEFAULT_DB, max_rows=DEFAULT_MAX_ROWS, timeout_s=DEFAULT_TIMEOUT_S, model=MODEL
+):
     """Run the whole pipeline for one question and return the outcome, without printing.
 
     "status" is one of: "declined" (the model says the data cannot answer it),
     "rejected" (the guardrail refused the SQL), "failed" (DuckDB error or
     timeout), "ok". "error" holds the reason for "rejected" and "failed".
     """
-    generated = generate_sql(question)
+    generated = generate_sql(question, model)
     result = {
         "model": generated["model"],
         "latency_s": generated["latency_s"],
@@ -81,12 +89,13 @@ def answer(question, db_path=DEFAULT_DB, max_rows=DEFAULT_MAX_ROWS, timeout_s=DE
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("question")
+    parser.add_argument("--model", default=MODEL)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--max-rows", type=int, default=DEFAULT_MAX_ROWS)
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     args = parser.parse_args()
 
-    result = answer(args.question, args.db, args.max_rows, args.timeout)
+    result = answer(args.question, args.db, args.max_rows, args.timeout, args.model)
     if result["status"] == "declined":
         print(f"The model says this cannot be answered from the data ({result['model']}).")
         return 0

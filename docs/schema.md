@@ -55,3 +55,5 @@ One row per recorded workout from Garmin Connect. NULL means the value was not r
 - Pace in min:sec per km: `avg_pace_s_per_km / 60` gives decimal minutes.
 - Weekly totals: `date_trunc('week', start_time_local)` (weeks start on Monday).
 - "Runs" means `sport_group = 'running'` unless a specific running type is asked for.
+- "Last", "latest" and "previous" activity all mean the most recent one: `ORDER BY start_time_local DESC LIMIT 1`, with no OFFSET.
+- "How long" can mean distance or duration: return both `distance_km` and `timer_time_s`.
