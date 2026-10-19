@@ -1,0 +1,164 @@
+{
+  "config": {
+    "name": "claude-haiku-5-5-b61a9f98",
+    "started": "2026-10-19T07:46:36+00:00",
+    "finished": "2026-10-19T07:47:48+00:00",
+    "model": "claude-haiku-5-5",
+    "model_digest": null,
+    "ollama_version": null,
+    "temperature": null,
+    "seed": null,
+    "system_prompt_sha256": "77b7b77a54fce3e69cf0f45e3463c43ec3c506d40774d37b3998b12ea5e9aa3c",
+    "examples_file": null,
+    "examples_sha256": null,
+    "retry": false,
+    "retry_prompt_sha256": null,
+    "snapshot_sha256": "cf04b1e90e6c8bfbf9ce9dc0a7a4fdf6fd2fae0e6124b64ce44144245f4bbea2",
+    "questions_sha256": "4a255b4f10fa22cb1aad3903bedf114ba2dcbb725ef4f97cf98e6b645a7fc624",
+    "abs_tolerance": 0.005,
+    "git_commit": "39c1c4a8c376e9ad6a006b6e5c7b40ca67963758",
+    "git_uncommitted_changes": false
+  },
+  "complete": true,
+  "missing_questions": [],
+  "questions": 34,
+  "correct_overall": {
+    "count": 31,
+    "of": 34,
+    "share": 0.9118
+  },
+  "execution_accuracy": {
+    "count": 24,
+    "of": 27,
+    "share": 0.8889
+  },
+  "valid_sql_rate": {
+    "count": 27,
+    "of": 27,
+    "share": 1.0
+  },
+  "unanswerable_declined": {
+    "count": 7,
+    "of": 7,
+    "share": 1.0
+  },
+  "unanswerable_answered": {
+    "count": 0,
+    "of": 7,
+    "share": 0.0
+  },
+  "answerable_declined": {
+    "count": 0,
+    "of": 27,
+    "share": 0.0
+  },
+  "lenient": {
+    "correct_overall": {
+      "count": 34,
+      "of": 34,
+      "share": 1.0
+    },
+    "execution_accuracy": {
+      "count": 27,
+      "of": 27,
+      "share": 1.0
+    }
+  },
+  "retry": null,
+  "by_category": {
+    "simple": {
+      "count": 8,
+      "of": 9,
+      "share": 0.8889
+    },
+    "date_logic": {
+      "count": 5,
+      "of": 7,
+      "share": 0.7143
+    },
+    "window": {
+      "count": 5,
+      "of": 5,
+      "share": 1.0
+    },
+    "multi_step": {
+      "count": 6,
+      "of": 6,
+      "share": 1.0
+    },
+    "unanswerable": {
+      "count": 7,
+      "of": 7,
+      "share": 1.0
+    }
+  },
+  "verdicts": {
+    "correct": 24,
+    "declined_correctly": 7,
+    "wrong_result": 3
+  },
+  "error_categories": null,
+  "performance": {
+    "ttft_s": {
+      "median": 1.41,
+      "min": 0.87,
+      "max": 2.62
+    },
+    "latency_s": {
+      "median": 2.1,
+      "min": 1.13,
+      "max": 2.92
+    },
+    "generation_tokens_per_s": {
+      "median": 284.55,
+      "min": 134.11,
+      "max": 641.09
+    },
+    "prompt_tokens": {
+      "median": 2462.0,
+      "min": 2442,
+      "max": 2568
+    },
+    "completion_tokens": {
+      "median": 162.5,
+      "min": 42,
+      "max": 382
+    }
+  },
+  "per_question": {
+    "q001": "correct",
+    "q002": "correct",
+    "q003": "correct",
+    "q004": "correct",
+    "q005": "correct",
+    "q006": "correct",
+    "q007": "wrong_result",
+    "q008": "correct",
+    "q009": "correct",
+    "q010": "correct",
+    "q011": "correct",
+    "q012": "correct",
+    "q013": "correct",
+    "q014": "correct",
+    "q015": "correct",
+    "q016": "correct",
+    "q017": "correct",
+    "q018": "correct",
+    "q019": "correct",
+    "q020": "correct",
+    "q021": "declined_correctly",
+    "q022": "declined_correctly",
+    "q023": "declined_correctly",
+    "q024": "declined_correctly",
+    "q025": "declined_correctly",
+    "q026": "declined_correctly",
+    "q027": "declined_correctly",
+    "q028": "correct",
+    "q029": "correct",
+    "q030": "correct",
+    "q031": "wrong_result",
+    "q032": "wrong_result",
+    "q033": "correct",
+    "q034": "correct"
+  }
+}
