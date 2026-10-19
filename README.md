@@ -181,7 +181,15 @@ The numbers come from the files in [results/processed/summaries/](results/proces
 
 `src/ui.py` is a Streamlit page over the same pipeline, opened from the phone over Tailscale.
 
-Local models are reached through the OpenAI-compatible API, so a different server can be used by setting `LLM_BASE_URL` and `LLM_MODEL`. Models whose name starts with `claude-` go through the Anthropic Python SDK (`src/send_anthropic.py`) with the same prompt text. The eval uses this already. The live app still runs `qwen2.5-coder:1.5b`; switching it to `claude-haiku-5-5` is the next step.
+Local models are reached through the OpenAI-compatible API, so a different server can be used by setting `LLM_BASE_URL` and `LLM_MODEL`. Models whose name starts with `claude-` go through the Anthropic Python SDK (`src/send_anthropic.py`). The live app uses `claude-haiku-5-5`; set `LLM_MODEL` or pass `--model` to use a local model instead.
+
+The hosted model replies with structured output: JSON that the API checks against a schema (`REPLY_SCHEMA` in `src/prompt.py`), with three fields:
+
+- `interpretation`: how the question was read, in a few words ("most recent run; distance and time"). The page shows it above the SQL, so a wrong reading of an ambiguous question is visible.
+- `cannot_answer`: true when the table cannot answer the question.
+- `sql`: the query, which still goes through the guardrail.
+
+Local models reply in plain text, and the SQL is taken from the reply: the first code block, or else everything from the first line that starts a query, and `CANNOT_ANSWER` in place of SQL marks a decline.
 
 ## How it is evaluated
 

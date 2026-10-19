@@ -67,6 +67,7 @@ def answer(
         "model": generated["model"],
         "latency_s": generated["latency_s"],
         "sql": generated["sql"],
+        "interpretation": generated["interpretation"],
         "error": None,
         "columns": None,
         "rows": None,
@@ -98,7 +99,11 @@ def main():
     result = answer(args.question, args.db, args.max_rows, args.timeout, args.model)
     if result["status"] == "declined":
         print(f"The model says this cannot be answered from the data ({result['model']}).")
+        if result["interpretation"]:
+            print(result["interpretation"])
         return 0
+    if result["interpretation"]:
+        print(f"Read as: {result['interpretation']}")
     print(f"SQL ({result['model']}, {result['latency_s']:.1f} s):")
     print(result["sql"])
     print()

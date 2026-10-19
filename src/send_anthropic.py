@@ -1,9 +1,8 @@
 """Send a request to a hosted Claude model through the Anthropic API.
 
-Used by the eval as a reference point next to the local models; the assistant
-itself (app.py) stays local. The request is built by generate_sql.build_request
-in the OpenAI chat format and converted here, so the prompt is the same text
-for every model.
+Used by the live app (claude-haiku-5-5 is its model) and by the eval. The
+request is built by generate_sql.build_request in the OpenAI chat format and
+converted here.
 
 Differences from the local models:
 - No temperature and no seed: Claude Haiku 5.5 rejects non-default sampling
@@ -31,16 +30,22 @@ def to_anthropic_request(request):
     """Convert an OpenAI-format request into the arguments of messages.stream.
 
     The system message moves to the separate system field. Temperature and seed
-    are dropped, because the model does not accept them.
+    are dropped, because the model does not accept them. An output_schema
+    becomes output_config.format, so the API returns JSON matching it.
     """
     system = [m["content"] for m in request["messages"] if m["role"] == "system"]
-    return {
+    converted = {
         "model": request["model"],
         "max_tokens": MAX_TOKENS,
         "thinking": {"type": "disabled"},
         "system": "\n\n".join(system),
         "messages": [m for m in request["messages"] if m["role"] != "system"],
     }
+    if "output_schema" in request:
+        converted["output_config"] = {
+            "format": {"type": "json_schema", "schema": request["output_schema"]}
+        }
+    return converted
 
 
 def send_anthropic(request):

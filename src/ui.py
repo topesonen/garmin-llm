@@ -23,7 +23,11 @@ if submitted and question.strip():
 
     if result["status"] == "declined":
         st.info(f"The model says this cannot be answered from the data ({result['model']}).")
+        if result["interpretation"]:
+            st.caption(result["interpretation"])
     else:
+        if result["interpretation"]:
+            st.markdown(f"**Read as:** {result['interpretation']}")
         st.caption(f"{result['model']}, {result['latency_s']:.1f} s")
         st.code(result["sql"], language="sql")
         if result["status"] == "rejected":

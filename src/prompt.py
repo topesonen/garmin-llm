@@ -29,20 +29,52 @@ PLAN_REPLY_LINE = (
     "Start with a short plan as SQL comments, one line per step, then write "
     "exactly one SELECT query. Nothing else: no other explanation, no Markdown.\n"
 )
+# Structured output (hosted models only): the reply is JSON that matches
+# REPLY_SCHEMA, enforced by the API, so no SQL has to be dug out of free text.
+STRUCTURED_REPLY_LINE = (
+    "Reply in the given JSON format: first a short interpretation of the "
+    "question, then exactly one SELECT query in sql.\n"
+)
+REPLY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        # First, so the model settles the meaning before it writes the query.
+        "interpretation": {
+            "type": "string",
+            "description": "How the question was read, in a few words, e.g. "
+            "'most recent run; distance and time'.",
+        },
+        "cannot_answer": {
+            "type": "boolean",
+            "description": "True if the table cannot answer the question.",
+        },
+        "sql": {
+            "type": "string",
+            "description": "One DuckDB SELECT query, or empty if cannot_answer is true.",
+        },
+    },
+    "required": ["interpretation", "cannot_answer", "sql"],
+    "additionalProperties": False,
+}
 
 
-def instructions(plan=False):
+def instructions(plan=False, structured=False):
     """Return the instructions at the start of the system message."""
+    if structured:
+        reply_line = STRUCTURED_REPLY_LINE
+        decline = "set cannot_answer to true and leave sql empty."
+    else:
+        reply_line = PLAN_REPLY_LINE if plan else REPLY_LINE
+        decline = f"reply with exactly {DECLINE_TOKEN} and nothing else."
     return (
         "You translate questions about a person's training activities into SQL "
         "for DuckDB.\n"
-        + (PLAN_REPLY_LINE if plan else REPLY_LINE)
+        + reply_line
         + "Use only the table and columns described below.\n"
         "Return only the columns that answer the question. When the question "
         "could mean more than one measure, such as distance or time for "
         '"how long", return each of them rather than choosing one.\n'
-        "If the question cannot be answered from that table, reply with exactly "
-        f"{DECLINE_TOKEN} and nothing else."
+        "If the question cannot be answered from that table, " + decline
     )
 
 
@@ -61,10 +93,10 @@ def load_examples(path):
     return [(entry["question"].strip(), entry["sql"].strip()) for entry in entries]
 
 
-def build_messages(question, schema_path=DEFAULT_SCHEMA, examples=(), plan=False):
+def build_messages(question, schema_path=DEFAULT_SCHEMA, examples=(), plan=False, structured=False):
     """Return the messages list for the OpenAI-compatible chat endpoint."""
     schema = Path(schema_path).read_text().strip()
-    messages = [{"role": "system", "content": f"{instructions(plan)}\n\n{schema}"}]
+    messages = [{"role": "system", "content": f"{instructions(plan, structured)}\n\n{schema}"}]
     # Each example looks like a question the model already answered correctly.
     for example_question, example_sql in examples:
         messages.append({"role": "user", "content": example_question})

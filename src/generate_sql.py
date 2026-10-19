@@ -3,12 +3,14 @@
 Talks to any OpenAI-compatible chat endpoint. The defaults point at the local
 Ollama server; set LLM_BASE_URL, LLM_MODEL and LLM_API_KEY to use another one.
 A model whose name starts with claude- goes through the Anthropic API instead
-(send_anthropic.py), with the same prompt text.
+(send_anthropic.py). generate_sql() asks it for structured output: JSON with
+the interpretation, a decline flag and the SQL. Local models reply in text.
 
 Usage:
     python src/generate_sql.py "How many runs did I do in 2025?"
 """
 
+import json
 import os
 import re
 import sys
@@ -16,7 +18,7 @@ import time
 
 from openai import OpenAI
 
-from prompt import DECLINE_TOKEN, DEFAULT_SCHEMA, build_messages, build_retry_messages
+from prompt import DECLINE_TOKEN, DEFAULT_SCHEMA, REPLY_SCHEMA, build_messages, build_retry_messages
 from send_anthropic import is_hosted, send_anthropic, to_anthropic_request
 
 BASE_URL = os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1")
@@ -56,14 +58,39 @@ def is_decline(sql):
     return bool(code) and code[0].upper().startswith(DECLINE_TOKEN)
 
 
-def build_request(question, model=MODEL, examples=(), schema_path=DEFAULT_SCHEMA, plan=False):
-    """Return everything that determines the reply; also the key for caching it."""
-    return {
+def build_request(
+    question, model=MODEL, examples=(), schema_path=DEFAULT_SCHEMA, plan=False, structured=False
+):
+    """Return everything that determines the reply; also the key for caching it.
+
+    structured=True asks for a JSON reply matching REPLY_SCHEMA; only the
+    Anthropic sender supports it. Without it the request is unchanged, so
+    earlier cache keys and run names stay valid.
+    """
+    request = {
         "model": model,
-        "messages": build_messages(question, schema_path=schema_path, examples=examples, plan=plan),
+        "messages": build_messages(
+            question, schema_path=schema_path, examples=examples, plan=plan, structured=structured
+        ),
         "temperature": 0,
         "seed": 0,
     }
+    if structured:
+        request["output_schema"] = REPLY_SCHEMA
+    return request
+
+
+def parse_structured(reply):
+    """Return (interpretation, sql, declined) from a structured reply.
+
+    A reply that is not valid JSON (cut off, or a refusal) gives empty SQL,
+    which the guardrail then refuses.
+    """
+    try:
+        fields = json.loads(reply)
+    except json.JSONDecodeError:
+        return None, "", False
+    return fields["interpretation"].strip(), fields["sql"].strip(), bool(fields["cannot_answer"])
 
 
 def build_retry_request(request, reply, error):
@@ -107,19 +134,28 @@ def send(request, base_url=BASE_URL):
 
 def generate_sql(question, model=MODEL, base_url=BASE_URL):
     """Send one question to the model. Returns the raw reply, the SQL and timing."""
-    request = build_request(question, model)
     if is_hosted(model):
-        response = send_anthropic(to_anthropic_request(request))
+        response = send_anthropic(to_anthropic_request(build_request(question, model, structured=True)))
+        interpretation, sql, declined = parse_structured(response["reply"])
     else:
-        response = send(request, base_url)
-    sql = extract_sql(response["reply"])
-    return {"model": model, **response, "sql": sql, "declined": is_decline(sql)}
+        response = send(build_request(question, model), base_url)
+        sql = extract_sql(response["reply"])
+        interpretation, declined = None, is_decline(sql)
+    return {
+        "model": model,
+        **response,
+        "sql": sql,
+        "declined": declined,
+        "interpretation": interpretation,
+    }
 
 
 if __name__ == "__main__":
     result = generate_sql(sys.argv[1])
     print("--- raw reply")
     print(result["reply"])
+    if result["interpretation"]:
+        print(f"--- interpretation: {result['interpretation']}")
     print("--- declined" if result["declined"] else "--- extracted sql")
     print(result["sql"])
     print(
