@@ -57,7 +57,7 @@ from guardrails import check_sql
 from load_questions import DEFAULT_QUESTIONS, load_questions
 from prompt import DEFAULT_SCHEMA, REPLY_SCHEMA, RETRY_TEMPLATE, load_examples
 from send_anthropic import is_hosted, send_anthropic, to_anthropic_request
-from score import ABS_TOLERANCE, compare_results
+from score import ABS_TOLERANCE, compare_results, matches_with_extra_columns
 from summarize import write_summary
 
 SNAPSHOT_MANIFEST = Path("eval/snapshot.json")
@@ -98,6 +98,8 @@ def evaluate(question, reply, db_path, max_rows=MAX_ROWS, timeout_s=TIMEOUT_S, s
         "detail": "",
         # The full error text, for the retry. It can quote values from the data.
         "error": None,
+        # Lenient check: right answer, but with extra columns. Set only for answerable questions that ran.
+        "extra_columns_match": None,
         "gold_rows": None,
         "model_rows": None,
     }
@@ -130,6 +132,9 @@ def evaluate(question, reply, db_path, max_rows=MAX_ROWS, timeout_s=TIMEOUT_S, s
     else:
         match, reason = compare_results(result["gold_rows"], result["model_rows"], question["ordered"])
         result["verdict"], result["detail"] = ("correct" if match else "wrong_result"), reason
+        result["extra_columns_match"] = not match and matches_with_extra_columns(
+            result["gold_rows"], result["model_rows"], question["ordered"]
+        )
     return result
 
 
@@ -303,6 +308,7 @@ def main():
             "ordered": question["ordered"],
             "gold_sql": question["gold_sql"],
             "correct": scored["verdict"] in CORRECT_VERDICTS,
+            "correct_lenient": scored["verdict"] in CORRECT_VERDICTS or bool(scored["extra_columns_match"]),
             **scored,
             "from_cache": from_cache,
             **response,

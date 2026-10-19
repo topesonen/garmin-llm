@@ -196,6 +196,7 @@ Local models reply in plain text, and the SQL is taken from the reply: the first
 - [eval/questions.yaml](eval/questions.yaml) holds the questions and a gold SQL query for each. Expected answers are computed by running the gold query, never typed by hand.
 - [eval/questions_heldout.yaml](eval/questions_heldout.yaml) holds 16 held-out questions in the same format, run with `--questions eval/questions_heldout.yaml`. Their runs get their own run names.
 - `eval/run_eval.py` runs every question through one configuration and compares result sets with `eval/score.py`: numbers may differ by at most 0.005, column names are ignored, and row order counts only where the question asks for it.
+- An extra column fails a question. A second, lenient score is reported next to it: there a result with extra columns counts as correct when some of its columns match the gold result. In the app, a right answer with the date or distance next to it is fine; the strict score shows whether the model returns only what was asked. Only runs scored since 2026-10-19 have the lenient score.
 - Every model reply is cached on disk, keyed by the full request, so an interrupted run continues where it stopped.
 - `--examples` adds the worked examples in a file such as [configs/fewshot_v2.yaml](configs/fewshot_v2.yaml) to the prompt. The examples are not eval questions.
 - `--retry` sends a failed query back to the model once, with the error message.

@@ -12,6 +12,11 @@ them. The rules, decided by Topias on 2026-10-08 (tolerance changed on 2026-10-1
 - A timestamp at midnight equals the same date. NULL equals only NULL.
 - Text must be identical.
 
+A second, lenient check (Topias, 2026-10-19) is reported next to the strict
+one: a result with extra columns counts as matching when some of its columns,
+as many as the gold result has, match the gold result. It never replaces the
+strict verdict.
+
 Usage:
     python eval/score.py        runs the examples at the bottom of this file
 """
@@ -19,7 +24,7 @@ Usage:
 import datetime
 import math
 from decimal import Decimal
-from itertools import permutations
+from itertools import combinations, permutations
 
 # Two decimal places: an answer rounded to two decimals matches, so 4.17 and
 # 4.1667 match, 4.16 and 4.1667 do not. Was 0.001 until 2026-10-14.
@@ -89,6 +94,21 @@ def compare_results(gold_rows, model_rows, ordered):
     return False, "values differ"
 
 
+def matches_with_extra_columns(gold_rows, model_rows, ordered):
+    """True if the model result has more columns than the gold result, and some
+    of its columns, as many as the gold result has, match it."""
+    if not gold_rows or len(gold_rows) != len(model_rows):
+        return False
+    gold_width, model_width = len(gold_rows[0]), len(model_rows[0])
+    if model_width <= gold_width:
+        return False
+    for columns in combinations(range(model_width), gold_width):
+        chosen = [tuple(row[i] for i in columns) for row in model_rows]
+        if compare_results(gold_rows, chosen, ordered)[0]:
+            return True
+    return False
+
+
 if __name__ == "__main__":
     day = datetime.date(2025, 6, 30)
     examples = [
@@ -119,4 +139,22 @@ if __name__ == "__main__":
         status = "ok  " if match == expected else "FAIL"
         print(f"{status} {'match   ' if match else 'no match'}  {description}{': ' + reason if reason else ''}")
     print(f"{len(examples) - wrong} of {len(examples)} examples behave as intended")
+
+    lenient_examples = [
+        # (expected, description, gold, model, ordered)
+        (True, "answer plus an extra column", [(day,)], [(day, 104.0)], False),
+        (True, "answer in the last of three columns", [(5.2,)], [(1, "run", 5.2)], False),
+        (True, "two gold columns among three", [(1, 10.0), (2, 20.0)], [(10.0, "x", 1), (20.0, "y", 2)], False),
+        (False, "extra column, wrong answer", [(day,)], [(datetime.date(2025, 7, 1), 104.0)], False),
+        (False, "same width is the strict check's job", [(1,)], [(2,)], False),
+        (False, "fewer columns", [(1, 2)], [(1,)], False),
+        (False, "extra row", [(1,)], [(1, 9), (2, 9)], False),
+    ]
+    for expected, description, gold, model, ordered in lenient_examples:
+        match = matches_with_extra_columns(gold, model, ordered)
+        wrong += match != expected
+        status = "ok  " if match == expected else "FAIL"
+        print(f"{status} {'match   ' if match else 'no match'}  lenient: {description}")
+    total = len(examples) + len(lenient_examples)
+    print(f"{total - wrong} of {total} examples behave as intended, lenient check included")
     raise SystemExit(1 if wrong else 0)

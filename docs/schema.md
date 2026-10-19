@@ -56,4 +56,4 @@ One row per recorded workout from Garmin Connect. NULL means the value was not r
 - Weekly totals: `date_trunc('week', start_time_local)` (weeks start on Monday).
 - "Runs" means `sport_group = 'running'` unless a specific running type is asked for.
 - "Last", "latest" and "previous" activity all mean the most recent one: `ORDER BY start_time_local DESC LIMIT 1`, with no OFFSET.
-- "How long" can mean distance or duration: return both `distance_km` and `timer_time_s`.
+- "How long" with no unit can mean distance or duration: return both `distance_km` and `timer_time_s`. When the question names a unit or a measure (km, minutes, distance, time), return only that one.

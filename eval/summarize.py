@@ -130,6 +130,12 @@ def summarize(run_dir):
             sum(r["verdict"] == "answered_unanswerable" for r in unanswerable), len(unanswerable)
         ),
         "answerable_declined": share(sum(r["declined"] for r in answerable), len(answerable)),
+        # Lenient: a right answer with extra columns also counts (see eval/score.py).
+        # Only runs scored since 2026-10-19 have it; for earlier runs it is None.
+        "lenient": {
+            "correct_overall": share(sum(r["correct_lenient"] for r in records), len(records)),
+            "execution_accuracy": share(sum(r["correct_lenient"] for r in answerable), len(answerable)),
+        } if all("correct_lenient" in r for r in records) else None,
         # Only for runs with the error-feedback retry. All other metrics describe
         # the final attempt; these show what the retry changed.
         "retry": {
@@ -180,6 +186,9 @@ def write_summary(run_dir):
     show("unanswerable declined", summary["unanswerable_declined"])
     show("unanswerable answered", summary["unanswerable_answered"])
     show("answerable declined", summary["answerable_declined"])
+    if summary["lenient"]:
+        show("lenient: correct overall", summary["lenient"]["correct_overall"])
+        show("lenient: execution acc.", summary["lenient"]["execution_accuracy"])
     if summary["retry"]:
         print("retry")
         for label, value in summary["retry"].items():
