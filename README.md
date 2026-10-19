@@ -6,15 +6,16 @@ The model was chosen by measurement: local models on a laptop and one hosted mod
 
 ```
 $ python src/app.py "How many runs did I do in 2025?"
-SQL (qwen2.5-coder:1.5b, 16.4 s):
-SELECT COUNT(*) FROM activities WHERE start_time_local >= '2025-01-01' AND start_time_local < '2026-01-01' AND sport_group = 'running'
+Read as: count of running activities with start date in 2025
+SQL (claude-haiku-5-5, 2.0 s):
+SELECT COUNT(*) AS run_count FROM activities WHERE sport_group = 'running' AND start_time_local >= TIMESTAMP '2025-01-01' AND start_time_local < TIMESTAMP '2026-01-01'
 
 Result:
- count_star()
-           81
+ run_count
+         2
 ```
 
-The output above is from a test database with invented activities.
+The output above is from a test database with three invented activities. The page shows the same: how the question was read, the SQL and the result table.
 
 ## Status
 
@@ -23,11 +24,11 @@ Work in progress. The plan and the session log are in [PROJECT.md](PROJECT.md).
 | Part | State |
 |---|---|
 | Ingest of the Garmin Connect CSV export into DuckDB, checked by hand | Done |
-| Question to SQL to result, on the command line and as a Streamlit page reached from the phone over Tailscale | Done, with a local model |
+| Question to SQL to result, on the command line and as a Streamlit page reached from the phone over Tailscale | Done |
 | Model selection: evaluation set (34 questions plus 16 held-out), harness, experiments | Done |
-| The chosen model, `claude-haiku-5-5`, in the live app | Next |
+| The chosen model, `claude-haiku-5-5`, in the live app, with structured output and its eval baseline | Done |
 | A dashboard of fixed stats next to the question box | Planned |
-| Running on an always-on server | Planned |
+| Running on an always-on server, over HTTPS | Next |
 | Synthetic data, so others can run it | Not started |
 
 ## How the model was chosen
@@ -148,9 +149,37 @@ At first this run was only a check of whether the questions themselves were too 
 
 Run names are shortened; the full names are `qwen2.5-coder_7b-...` and `claude-haiku-5-5-...`. The two runs used 96,421 input and 5,902 output tokens, about $0.013 at the listed price of $0.10 and $0.50 per million. The median latency was 1.17 s per question on the main set, against 12 to 30 s on the laptop; network and data-centre hardware make that a context figure, not a comparison.
 
-None of Haiku's three main-set failures is a wrong approach. Two return the right answer with extra columns; with them dropped, both match the gold query. The third puts a sentence before an otherwise well-formed query, so the guardrail refuses it. That query uses the `avg_pace_s_per_km` column, which [docs/schema.md](docs/schema.md) describes as timer time divided by distance, where the question asks for that division. In the data the two differ slightly (median 0.25 s per km over 302 runs, more than 1 s for 6 of them), enough to miss the 0.005 tolerance. So the schema description was slightly wrong there, and a model that trusted it was misled. Every pace value in the export is rounded to whole seconds, which explains most of the difference; the description now says so. All runs in this README used the old wording.
+None of Haiku's three main-set failures is a wrong approach. Two return the right answer with extra columns; with them dropped, both match the gold query. The third puts a sentence before an otherwise well-formed query, so the guardrail refuses it. That query uses the `avg_pace_s_per_km` column, which [docs/schema.md](docs/schema.md) describes as timer time divided by distance, where the question asks for that division. In the data the two differ slightly (median 0.25 s per km over 302 runs, more than 1 s for 6 of them), enough to miss the 0.005 tolerance. So the schema description was slightly wrong there, and a model that trusted it was misled. Every pace value in the export is rounded to whole seconds, which explains most of the difference; the description now says so. All runs above used the old wording; the production baseline below uses the new one.
 
 A capable model answers every held-out question and all nine window questions. The questions and gold queries hold up, and the failures of the local models come from the models, not from ambiguous questions. That agrees with the two prompt experiments above: neither more schema detail nor a written plan moved the window and multi-step questions with the 7b model.
+
+### The production baseline
+
+The live app sends Haiku a slightly different request from the reference run above:
+
+- structured output, so the reply is JSON with an interpretation, a decline flag and the SQL (see [How it works](#how-it-works));
+- the corrected pace description;
+- two notes on what "last" or "previous" and "how long" mean, added after a question asked on the phone returned the two latest runs;
+- an instruction to return only the columns that answer the question.
+
+Both sets were run once with this request. Every later prompt or model change is checked against these runs. The lenient score counts a right answer that comes with extra columns; see [How it is evaluated](#how-it-is-evaluated).
+
+|                                  | Main set                    | Held-out                    |
+| -------------------------------- | --------------------------- | --------------------------- |
+| Correct overall                  | 31 of 34                    | 14 of 16                    |
+| Execution accuracy               | 24 of 27                    | 12 of 13                    |
+| Lenient: correct overall         | 34 of 34                    | 15 of 16                    |
+| Lenient: execution accuracy      | 27 of 27                    | 13 of 13                    |
+| Unanswerable declined            | 7 of 7                      | 2 of 3                      |
+| Window, multi-step               | 5 of 5, 6 of 6              | 4 of 4, 3 of 3              |
+| Median latency                   | 2.1 s                       | 2.08 s                      |
+| Run                              | `claude-haiku-5-5-b61a9f98` | `claude-haiku-5-5-2f9bf096` |
+
+The three strict failures on the main set are right answers with context columns, such as the week's total next to the week that was asked for. On the held-out set every answerable question is right under the lenient score. One unanswerable question got a query instead of a decline; in the app that would show a table for a question the data cannot answer. The held-out failures are not read, so that the set stays a fair test.
+
+An attempt in between, with the new notes but the plain-text reply, scored 29 of 34 and 13 of 16 (runs `claude-haiku-5-5-f2f8e7d5` and `claude-haiku-5-5-474d2609`). Its first "how long" note also fired on "distance of my longest run, in km", so it was narrowed to questions that name no unit.
+
+The structured reply about doubles the median latency (2.1 s against 1.03 s for the plain-text attempt), because the interpretation is written before the query. The two runs cost about $0.017 together.
 
 ### Why the queries fail
 
@@ -207,7 +236,7 @@ Local models reply in plain text, and the SQL is taken from the reply: the first
 
 ## Hardware and speed
 
-Everything so far runs CPU-only on a ThinkPad T490 (Intel i7-8665U, 32 GB RAM) with [Ollama](https://ollama.com). With `qwen2.5-coder:1.5b` it generates about 15 tokens per second in the benchmark; in the eval runs the median was 17.56 tokens per second for the 1.5b model, 4.76 for `qwen2.5-coder:7b` and 3.22 for `ministral-3:8b`. In the benchmark, a cold request took 21.8 seconds, of which 15.1 seconds went to reading the 1039-token schema prompt. The schema sits at the start of every prompt so that the server's cache covers it on later questions.
+The local models ran CPU-only on a ThinkPad T490 (Intel i7-8665U, 32 GB RAM) with [Ollama](https://ollama.com). With `qwen2.5-coder:1.5b` it generates about 15 tokens per second in the benchmark; in the eval runs the median was 17.56 tokens per second for the 1.5b model, 4.76 for `qwen2.5-coder:7b` and 3.22 for `ministral-3:8b`. In the benchmark, a cold request took 21.8 seconds, of which 15.1 seconds went to reading the 1039-token schema prompt. The schema sits at the start of every prompt so that the server's cache covers it on later questions.
 
 Details and the raw measurements are in [docs/environment.md](docs/environment.md) and `results/raw/environment/`.
 
@@ -219,14 +248,13 @@ The repository does not include data. It needs your own Garmin export until the 
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-ollama pull qwen2.5-coder:1.5b
 ```
 
 1. In Garmin Connect, open Activities and use Export CSV. Save the file as `data/raw/Activities.csv`.
 2. Create `data/private/place_names.txt` with one place name per line. These are stripped from the start of activity titles. The file may be empty.
 3. Load the data: `python src/ingest_csv.py`
-4. Ask a question: `python src/app.py "What was my longest run?"`
+4. Set `ANTHROPIC_API_KEY`, because the app uses `claude-haiku-5-5`. Then ask a question: `python src/app.py "What was my longest run?"`, or open the page with `streamlit run src/ui.py`.
+5. To use a local model instead: `ollama pull qwen2.5-coder:1.5b`, then pass `--model qwen2.5-coder:1.5b` or set `LLM_MODEL`.
 
 The eval needs a frozen copy of the database (`python scripts/freeze_snapshot.py`) and then runs with, for example:
 
@@ -235,7 +263,7 @@ ollama pull qwen2.5-coder:7b
 python eval/run_eval.py --model qwen2.5-coder:7b --examples configs/fewshot_v2.yaml
 ```
 
-The hosted reference run needs an Anthropic API key in `ANTHROPIC_API_KEY` and runs with `python eval/run_eval.py --model claude-haiku-5-5`.
+The production model's eval needs `ANTHROPIC_API_KEY` and runs with `python eval/run_eval.py --model claude-haiku-5-5`; add `--questions eval/questions_heldout.yaml` for the held-out set.
 
 The gold queries in `eval/questions.yaml` were verified against my data. On another export they still run, but nobody has checked that their answers are right for it.
 
@@ -259,4 +287,4 @@ The rules are in the Privacy section of [PROJECT.md](PROJECT.md).
 - [eval/questions.yaml](eval/questions.yaml): the evaluation questions and gold SQL
 - [eval/questions_heldout.yaml](eval/questions_heldout.yaml): the held-out questions
 - [results/processed/summaries/](results/processed/summaries/): aggregate metrics per eval run
-- [eval/labels/](eval/labels/): hand-made error labels for the failures of four runs
+- [eval/labels/](eval/labels/): hand-made error labels for the failures of five runs
