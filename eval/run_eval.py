@@ -16,6 +16,12 @@ questions, schema and examples, which are all public. --retry is refused for
 those models, because the retry message quotes DuckDB errors, which can
 contain values from the real data.
 
+Hosted models reply with structured output by default, as in the live app:
+JSON with interpretation, cannot_answer and sql (REPLY_SCHEMA in src/prompt.py).
+The sql field is scored and cannot_answer counts as a decline. --text-format
+asks a hosted model for the plain-text reply instead, which is how the hosted
+runs before 2026-10-19 were made; local models always use it.
+
 Stopping and restarting is safe. Replies are cached, so a second run asks the
 model only for what is missing and scores everything again.
 
@@ -26,7 +32,7 @@ Output: results/raw/real/<run name>/run.json with the configuration, and one
         aggregate metrics to results/processed/summaries/<run name>.json.
 
 Usage:
-    python eval/run_eval.py [--model TAG] [--schema MD] [--examples YAML] [--retry] [--plan] [--ids q001 q002 ...] [--name NAME]
+    python eval/run_eval.py [--model TAG] [--schema MD] [--examples YAML] [--retry] [--plan] [--text-format] [--ids q001 q002 ...] [--name NAME]
 """
 
 import argparse
@@ -44,10 +50,12 @@ import duckdb
 
 from app import run_query
 from cache import DEFAULT_CACHE_DIR, cached_call
-from generate_sql import BASE_URL, MODEL, build_request, build_retry_request, extract_sql, is_decline, send
+from generate_sql import (
+    BASE_URL, MODEL, build_request, build_retry_request, extract_sql, is_decline, parse_structured, send,
+)
 from guardrails import check_sql
 from load_questions import DEFAULT_QUESTIONS, load_questions
-from prompt import DEFAULT_SCHEMA, RETRY_TEMPLATE, load_examples
+from prompt import DEFAULT_SCHEMA, REPLY_SCHEMA, RETRY_TEMPLATE, load_examples
 from send_anthropic import is_hosted, send_anthropic, to_anthropic_request
 from score import ABS_TOLERANCE, compare_results
 from summarize import write_summary
@@ -68,16 +76,23 @@ def sha256_text(text):
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def evaluate(question, reply, db_path, max_rows=MAX_ROWS, timeout_s=TIMEOUT_S):
+def evaluate(question, reply, db_path, max_rows=MAX_ROWS, timeout_s=TIMEOUT_S, structured=False):
     """Score one model reply. Returns the verdict and everything it rests on.
 
     Verdicts: correct, wrong_result, declined_correctly, declined_wrongly,
     answered_unanswerable, rejected (by the guardrail), sql_error, timeout.
+    A structured reply is read from its fields; a text reply goes through
+    extract_sql and the decline token, as in the live app.
     """
-    sql = extract_sql(reply)
+    if structured:
+        interpretation, sql, declined = parse_structured(reply)
+    else:
+        sql = extract_sql(reply)
+        interpretation, declined = None, is_decline(sql)
     result = {
         "sql": sql,
-        "declined": is_decline(sql),
+        "interpretation": interpretation,
+        "declined": declined,
         "ran": False,
         "verdict": None,
         "detail": "",
@@ -153,12 +168,19 @@ def main():
     parser.add_argument("--examples", type=Path, help="YAML file of worked examples to put in the prompt")
     parser.add_argument("--retry", action="store_true", help="send a failed query back to the model once, with the error")
     parser.add_argument("--plan", action="store_true", help="ask for a plan as SQL comments before the query")
+    parser.add_argument(
+        "--text-format", action="store_true",
+        help="ask a hosted model for a plain-text reply instead of structured output",
+    )
     parser.add_argument("--ids", nargs="+", help="run only these question ids")
     parser.add_argument("--name", help="run name; default is the model plus a hash of the configuration")
     args = parser.parse_args()
     hosted = is_hosted(args.model)
     if hosted and args.retry:
         raise SystemExit("--retry is not allowed with a hosted model: DuckDB errors can quote values from the data")
+    if args.text_format and not hosted:
+        raise SystemExit("--text-format is only for hosted models; local models always reply in text")
+    structured = hosted and not args.text_format
 
     questions = load_questions(args.questions)
     unverified = [q["id"] for q in questions if not q["verified"]]
@@ -181,7 +203,7 @@ def main():
         raise SystemExit(f"{args.examples} repeats an eval question: {sorted(overlap)[0]}")
 
     ollama_version, model_digest = (None, None) if hosted else ollama_info(args.base_url, args.model)
-    example = build_request("", args.model, schema_path=args.schema, plan=args.plan)
+    example = build_request("", args.model, schema_path=args.schema, plan=args.plan, structured=structured)
     system_prompt = example["messages"][0]["content"]
     # Everything that defines this configuration. A change to any of it gives a new run folder.
     # The schema and the plan instruction are part of the system prompt, so they change its hash.
@@ -200,6 +222,9 @@ def main():
         config["provider"] = "anthropic"
         config["max_tokens"] = settings["max_tokens"]
         config["thinking"] = settings["thinking"]
+    # Added only with structured output, so text-format runs keep their name.
+    if structured:
+        config["reply_schema_sha256"] = sha256_text(json.dumps(REPLY_SCHEMA, sort_keys=True))
     # Added only when examples are used, so runs without them keep their name.
     if args.examples:
         config["examples_sha256"] = sha256_text(json.dumps(examples))
@@ -227,6 +252,8 @@ def main():
         "examples": [{"question": text, "sql": sql} for text, sql in examples],
         "retry": args.retry,
         "plan": args.plan,
+        "structured_output": structured,
+        "reply_schema": REPLY_SCHEMA if structured else None,
         "retry_prompt": RETRY_TEMPLATE if args.retry else None,
         "snapshot": snapshot["snapshot"],
         "questions_file": str(args.questions),
@@ -243,7 +270,7 @@ def main():
     print(f"run {name}: {len(questions)} questions, results in {out_dir}")
 
     for question in questions:
-        request = build_request(question["question"], args.model, examples, args.schema, args.plan)
+        request = build_request(question["question"], args.model, examples, args.schema, args.plan, structured)
         if hosted:
             request = to_anthropic_request(request)
             send_request = send_anthropic
@@ -252,7 +279,7 @@ def main():
         # The digest is part of the key: the same tag can point to a new model version.
         key = {"request": request, "model_digest": model_digest}
         response, from_cache = cached_call(key, lambda key: send_request(key["request"]), DEFAULT_CACHE_DIR)
-        scored = evaluate(question, response["reply"], snapshot["snapshot"])
+        scored = evaluate(question, response["reply"], snapshot["snapshot"], structured=structured)
         calls, first_attempt = [response], None
         if args.retry and scored["verdict"] in RETRY_VERDICTS:
             first_attempt = {field: scored[field] for field in ("sql", "verdict", "detail", "error")}

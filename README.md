@@ -199,6 +199,7 @@ Local models reply in plain text, and the SQL is taken from the reply: the first
 - Every model reply is cached on disk, keyed by the full request, so an interrupted run continues where it stopped.
 - `--examples` adds the worked examples in a file such as [configs/fewshot_v2.yaml](configs/fewshot_v2.yaml) to the prompt. The examples are not eval questions.
 - `--retry` sends a failed query back to the model once, with the error message.
+- Hosted models reply with structured output, as in the live app: the `sql` field is scored and `cannot_answer` counts as a decline. `--text-format` asks for a plain-text reply instead; every hosted run before 2026-10-19, including the ones in this README, used it.
 - `--plan` asks for a short plan as SQL comments before the query. The comments keep the reply a single valid query, so the guardrail and DuckDB need no change; a decline after comment lines still counts as a decline.
 - `--schema` replaces the schema description in the prompt, for example with [configs/schema_minimal.md](configs/schema_minimal.md). The schema is part of the system prompt, whose hash is in the run name.
 - `eval/summarize.py` writes the aggregate metrics for a run.
