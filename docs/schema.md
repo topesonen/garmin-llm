@@ -26,6 +26,9 @@ One row per recorded workout from Garmin Connect. NULL means the value was not r
 | avg_hr_bpm | DOUBLE | beats per minute | Average heart rate |
 | max_hr_bpm | DOUBLE | beats per minute | Maximum heart rate |
 | aerobic_te | DOUBLE | 0 to 5 scale | Garmin aerobic training effect |
+| anaerobic_te | DOUBLE | 0 to 5 scale | Garmin anaerobic training effect |
+| training_load | DOUBLE | points | Garmin training load of the activity (EPOC based). Weekly load is the sum |
+| training_effect_label | VARCHAR | | Garmin's primary benefit of the activity: 'AEROBIC_BASE', 'TEMPO', 'LACTATE_THRESHOLD', 'VO2MAX', 'ANAEROBIC_CAPACITY', 'SPEED', 'RECOVERY'. NULL when Garmin gave none |
 | avg_run_cadence_spm | DOUBLE | steps per minute | Average running cadence |
 | max_run_cadence_spm | DOUBLE | steps per minute | Maximum running cadence |
 | total_ascent_m | DOUBLE | metres | Elevation gain. NULL when not recorded or zero |

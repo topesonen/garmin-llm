@@ -234,6 +234,7 @@ Added 2026-10-06 by Topias. These make the project show the engineering side of 
 | Failures and retries | Handle a model server that is down or slow, a reply with no usable SQL, and a query that errors | Partly planned: pipeline step 5 (error feedback retry) is an A5 experiment. Retries and timeouts on the model call itself are new |
 | Tests | Automated tests for extraction, guardrails and query execution, runnable without the real data | New. The checks done by hand in A2 are the starting point |
 | Package layout | Installable package with a `pyproject.toml` in place of loose scripts in `src/` | New. Changes the repo layout below |
+| MCP server | Expose the warehouse to Claude chat as MCP tools (`get_schema`, read-only `run_query` with a row limit). Added by Topias 2026-10-22 as a separate side project | New. Claude drives the queries, so the eval cannot gate it the same way. A claude.ai connector is called from Anthropic's cloud and needs a public HTTPS endpoint with OAuth, which conflicts with the Tailscale-only rule; a local stdio server for Claude Desktop or Claude Code needs no exposure. Query results would reach Anthropic and the chat history, so this needs a privacy decision first |
 
 ## Phase C: the app (now)
 

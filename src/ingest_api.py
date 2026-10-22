@@ -67,6 +67,8 @@ NUMERIC = {
     "avg_hr_bpm": ("averageHR", 1),
     "max_hr_bpm": ("maxHR", 1),
     "aerobic_te": ("aerobicTrainingEffect", 1),
+    "anaerobic_te": ("anaerobicTrainingEffect", 1),
+    "training_load": ("activityTrainingLoad", 1),
     "avg_run_cadence_spm": ("averageRunningCadenceInStepsPerMinute", 1),
     "max_run_cadence_spm": ("maxRunningCadenceInStepsPerMinute", 1),
     "total_ascent_m": ("elevationGain", 1),
@@ -95,11 +97,16 @@ NUMERIC = {
 # Columns where 0 is a real value. Everywhere else the API's 0 means "not
 # recorded" and becomes NULL, as in the CSV export, which wrote "--" there.
 # Open question: keep zeros instead (PROJECT.md, open decisions).
-ZERO_IS_VALUE = {"aerobic_te", "min_elevation_m", "max_elevation_m"}
+ZERO_IS_VALUE = {
+    "aerobic_te", "anaerobic_te", "training_load", "min_elevation_m", "max_elevation_m",
+}
+
+# Garmin's code when it gives no primary benefit; stored as NULL.
+NO_LABEL = "UNKNOWN"
 
 SPEED_FIELDS = ["averageSpeed", "maxSpeed", "avgGradeAdjustedSpeed"]
 RAW_FIELDS = (
-    ["activityId", "startTimeLocal", "manualActivity"]
+    ["activityId", "startTimeLocal", "manualActivity", "trainingEffectLabel"]
     + [f for f, _ in NUMERIC.values()]
     + SPEED_FIELDS
 )
@@ -111,6 +118,7 @@ COLUMN_ORDER = [
     "avg_gap_s_per_km",
 ] + [c for c in NUMERIC if c not in (
     "distance_km", "elapsed_time_s", "timer_time_s", "moving_time_s")]
+COLUMN_ORDER.insert(COLUMN_ORDER.index("training_load") + 1, "training_effect_label")
 
 
 def raw_row(a):
@@ -156,6 +164,8 @@ def clean_row(a, places, unknown_types):
     out["best_speed_kmh"] = None if pace else to_kmh(a.get("maxSpeed"))
     # Grade-adjusted pace exists for running only; the API leaves it out elsewhere.
     out["avg_gap_s_per_km"] = to_pace(a.get("avgGradeAdjustedSpeed"))
+    label = a.get("trainingEffectLabel")
+    out["training_effect_label"] = None if label in (None, NO_LABEL) else label
     return out
 
 

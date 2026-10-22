@@ -182,6 +182,12 @@ def clean(raw, places):
     for col, src in numeric.items():
         out[col] = df[src].map(parse_number).values
 
+    # Not in the CSV export; NULL so both sources give the same table.
+    at = out.columns.get_loc("aerobic_te") + 1
+    out.insert(at, "anaerobic_te", float("nan"))
+    out.insert(at + 1, "training_load", float("nan"))
+    out.insert(at + 2, "training_effect_label", pd.Series(pd.NA, index=out.index, dtype="string"))
+
     out["best_lap_time_s"] = df["Best Lap Time"].map(parse_duration_s).values
     return out
 
