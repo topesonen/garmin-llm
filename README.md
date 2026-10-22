@@ -28,6 +28,7 @@ Work in progress. The plan and the session log are in [PROJECT.md](PROJECT.md).
 | Model selection: evaluation set (34 questions plus 16 held-out), harness, experiments | Done |
 | The chosen model, `claude-haiku-5-5`, in the live app, with structured output and its eval baseline | Done |
 | Running on an always-on server, over HTTPS within the tailnet | Done |
+| New activities synced hourly from Garmin's official Personal API | Done |
 | A dashboard of fixed stats next to the question box | Next |
 | Synthetic data, so others can run it | Not started |
 
@@ -253,6 +254,7 @@ pip install -r requirements.txt
 1. In Garmin Connect, open Activities and use Export CSV. Save the file as `data/raw/Activities.csv`.
 2. Create `data/private/place_names.txt` with one place name per line. These are stripped from the start of activity titles. The file may be empty.
 3. Load the data: `python src/ingest_csv.py`
+   Or, without the CSV: create a key in Garmin Connect (Settings, Personal API Key), set `GARMIN_API_KEY` or write `GARMIN_API_KEY=...` to `~/.config/garmin-llm/garmin.env`, and run `python src/ingest_api.py`. It fetches the full history and rebuilds the database; on the server it runs hourly (see [docs/server.md](docs/server.md)).
 4. Set `ANTHROPIC_API_KEY`, because the app uses `claude-haiku-5-5`. Then ask a question: `python src/app.py "What was my longest run?"`, or open the page with `streamlit run src/ui.py`.
 5. To use a local model instead: `ollama pull qwen2.5-coder:1.5b`, then pass `--model qwen2.5-coder:1.5b` or set `LLM_MODEL`.
 

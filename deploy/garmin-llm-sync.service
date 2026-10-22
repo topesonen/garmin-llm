@@ -1,0 +1,36 @@
+# Rebuilds the database from the Garmin Connect Personal API (src/ingest_api.py).
+# Started by garmin-llm-sync.timer; run by hand with `systemctl start garmin-llm-sync`.
+# Install: copy this file and the timer to /etc/systemd/system/, then
+# `systemctl daemon-reload && systemctl enable --now garmin-llm-sync.timer`.
+
+[Unit]
+Description=Garmin stats: sync activities from the Personal API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Its own user, in the garmin group: it owns the database, the app only reads it.
+User=garmin-sync
+Group=garmin
+WorkingDirectory=/opt/garmin-llm
+# One line, GARMIN_API_KEY=..., readable by root only. systemd reads it
+# before switching to the garmin-sync user.
+EnvironmentFile=/etc/garmin-llm-sync.env
+Environment=HOME=/tmp
+# New database files are readable by the garmin group (the app), not by others.
+UMask=0027
+ExecStart=/opt/garmin-llm/.venv/bin/python src/ingest_api.py
+TimeoutStartSec=10min
+
+# Only the warehouse folder is writable: the ingest writes a temporary file
+# there and moves it over the database.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/garmin-llm/data/warehouse
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true

@@ -1,0 +1,14 @@
+# Runs garmin-llm-sync.service once an hour.
+
+[Unit]
+Description=Garmin stats: hourly sync from the Personal API
+
+[Timer]
+OnCalendar=hourly
+# Spread the start over a few minutes instead of exactly on the hour.
+RandomizedDelaySec=5min
+# A run missed while the server was off happens soon after it starts.
+Persistent=true
+
+[Install]
+WantedBy=timers.target
