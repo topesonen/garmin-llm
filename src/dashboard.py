@@ -115,17 +115,19 @@ def training_effect_between(con, start, end):
 
 
 def types_between(con, start, end):
-    """Activities and training load per sport group from start up to, not
-    including, end."""
+    """Activities and training load per activity group from start up to, not
+    including, end. The groups are the sport groups, with trail running taken
+    out of running as its own group."""
     return con.execute(
         """
-        SELECT sport_group,
+        SELECT CASE WHEN activity_type = 'Trail Running' THEN 'trail_running'
+                    ELSE sport_group END AS activity_group,
                count(*) AS activities,
                coalesce(sum(training_load), 0) AS training_load
         FROM activities
         WHERE start_time_local >= $start AND start_time_local < $end
         GROUP BY ALL
-        ORDER BY sport_group
+        ORDER BY activity_group
         """,
         {"start": start, "end": end},
     ).df()

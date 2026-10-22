@@ -34,16 +34,23 @@ GROUP_COLOURS = {
     "light": ["#3fa0e0", "#eb6834", "#6250d6", "#898781"],
     "dark": ["#2f9ad8", "#d95926", "#8a5ee0", "#898781"],
 }
-# Page background, drawn as a gap between stacked labels of the same group.
+# Page background, drawn as a gap between stacked labels of the same group,
+# and Streamlit's default text colour, for values written on charts.
 SURFACE = {"light": "#ffffff", "dark": "#0e1117"}
-# One neutral colour for charts whose bars are told apart by their axis labels,
-# so they do not borrow the meaning of the intensity group colours.
-NEUTRAL = {"light": "#52514e", "dark": "#c3c2b7"}
-
+TEXT = {"light": "#31333f", "dark": "#fafafa"}
 SPORT_NAMES = {
-    "running": "Running", "strength": "Strength", "cardio": "Cardio", "cycling": "Cycling",
-    "rowing": "Rowing", "hiking": "Hiking", "skiing": "Skiing", "other": "Other",
+    "running": "Running", "trail_running": "Trail running", "strength": "Strength",
+    "cardio": "Cardio", "cycling": "Cycling", "rowing": "Rowing", "hiking": "Hiking",
+    "skiing": "Skiing", "other": "Other",
 }
+# Colours for the main activity groups (Topias's choice of hues, steps checked
+# with the palette validator, all pairs); every other group is grey. The bars
+# are named on the axis, so colour is a help, not the only cue.
+TYPE_COLOURS = {
+    "light": {"running": "#2a78d6", "trail_running": "#008300", "strength": "#a8399f", "cardio": "#eda100"},
+    "dark": {"running": "#3987e5", "trail_running": "#199e70", "strength": "#c84fae", "cardio": "#c98500"},
+}
+OTHER_TYPE_COLOUR = {"light": "#898781", "dark": "#6e6d68"}
 
 MEASURES = {"Activities": "activities", "Training load": "training_load"}
 CUSTOM = "Custom range..."
@@ -58,7 +65,8 @@ def theme():
 
 
 def show_totals(df, previous=None):
-    """Four numbers in a row; with previous, each shows the change from it."""
+    """Four numbers, wrapping two by two on a phone; with previous, each
+    shows the change from it."""
     row = df.iloc[0]
     before = previous.iloc[0] if previous is not None else None
     fields = [
@@ -67,9 +75,12 @@ def show_totals(df, previous=None):
         ("Running km", "running_km", "{:.1f}"),
         ("Training load", "training_load", "{:.0f}"),
     ]
-    for column, (title, field, fmt) in zip(st.columns(4), fields):
-        delta = None if before is None else fmt.format(row[field] - before[field])
-        column.metric(title, fmt.format(row[field]), delta)
+    # A fixed width lets a horizontal container fit four per row on a laptop
+    # and two on a phone; st.columns would stack them one per row there.
+    with st.container(horizontal=True, wrap=True):
+        for title, field, fmt in fields:
+            delta = None if before is None else fmt.format(row[field] - before[field])
+            st.metric(title, fmt.format(row[field]), delta, width=140)
 
 
 def period_dates(period, today, con):
@@ -109,6 +120,32 @@ def measure_axis(measure):
     return alt.Axis(format="d", tickMinStep=1) if measure == "activities" else alt.Axis()
 
 
+def is_touch():
+    """True when the browser says it is a phone or tablet. Vega hides a
+    tooltip when the pointer leaves the mark, which a touch screen never
+    reports, so a tapped tooltip stays on screen; those devices get the values
+    written on the charts only."""
+    agent = st.context.headers.get("User-Agent", "")
+    return any(word in agent for word in ("Mobi", "Android", "iPad"))
+
+
+def tooltips(fields):
+    """The tooltip encoding, or none on a touch screen."""
+    return {} if is_touch() else {"tooltip": fields}
+
+
+def headroom(top):
+    """Scale domain with room for a value label past the largest bar."""
+    return alt.Scale(domain=[0, max(top, 1) * 1.15])
+
+
+def value_text(base, measure, **mark):
+    """Values in text colour, never the series colour."""
+    return base.mark_text(color=TEXT[theme()], **mark).encode(
+        text=alt.Text(f"{measure}:Q", format=".0f")
+    )
+
+
 def label_chart(df, x, measure, title):
     """Bars per primary-benefit label, coloured by Garmin's intensity group."""
     names = [LABEL_NAMES[label] for label in dashboard.LABEL_ORDER]
@@ -122,46 +159,59 @@ def label_chart(df, x, measure, title):
         scale=alt.Scale(domain=dashboard.GROUP_ORDER, range=GROUP_COLOURS[theme()]),
         legend=alt.Legend(title=None, orient="bottom"),
     )
-    axis = measure_axis(measure)
     tooltip = [
         alt.Tooltip("benefit:N", title="Benefit"),
         alt.Tooltip("group:N", title="Group"),
         alt.Tooltip(f"{measure}:Q", title=title, format=".0f"),
     ]
-    bars = alt.Chart(df).mark_bar(stroke=SURFACE[theme()], strokeWidth=2)
     if x == "month":
-        chart = bars.encode(
-            x=alt.X("yearmonth(month):O", title=None, axis=alt.Axis(format="%b", labelAngle=0)),
-            y=alt.Y(f"{measure}:Q", title=title, axis=axis),
+        month = alt.X("yearmonth(month):O", title=None, axis=alt.Axis(format="%b", labelAngle=0))
+        y_scale = headroom(df.groupby("month")[measure].sum().max() if len(df) else 0)
+        bars = alt.Chart(df).mark_bar(stroke=SURFACE[theme()], strokeWidth=2).encode(
+            x=month,
+            y=alt.Y(f"{measure}:Q", title=title, axis=measure_axis(measure), scale=y_scale),
             color=colour,
             order=alt.Order("order:Q"),
-            tooltip=[alt.Tooltip("yearmonth(month):O", title="Month", format="%b %Y")] + tooltip,
+            **tooltips([alt.Tooltip("yearmonth(month):O", title="Month", format="%b %Y")] + tooltip),
         )
+        # The month's total above each stack.
+        totals = alt.Chart(df).transform_aggregate(
+            **{measure: f"sum({measure})"}, groupby=["month"]
+        ).encode(x=month, y=alt.Y(f"{measure}:Q", scale=y_scale))
+        chart = bars + value_text(totals, measure, baseline="bottom", dy=-2)
     else:
-        chart = bars.encode(
+        base = alt.Chart(df).encode(
             y=alt.Y("benefit:N", title=None, sort=names),
-            x=alt.X(f"{measure}:Q", title=title, axis=axis),
-            color=colour,
-            tooltip=tooltip,
+            x=alt.X(f"{measure}:Q", title=title, axis=measure_axis(measure),
+                    scale=headroom(df[measure].max() if len(df) else 0)),
         )
+        bars = base.mark_bar(stroke=SURFACE[theme()], strokeWidth=2).encode(
+            color=colour, **tooltips(tooltip)
+        )
+        chart = bars + value_text(base, measure, align="left", baseline="middle", dx=4)
     st.altair_chart(chart, width="stretch")
 
 
 def type_chart(df, measure, title):
-    """One bar per sport group, largest first."""
-    df = df.assign(sport=df["sport_group"].map(SPORT_NAMES).fillna(df["sport_group"]))
-    chart = (
-        alt.Chart(df)
-        .mark_bar(color=NEUTRAL[theme()])
-        .encode(
-            y=alt.Y("sport:N", title=None, sort="-x"),
-            x=alt.X(f"{measure}:Q", title=title, axis=measure_axis(measure)),
-            tooltip=[
-                alt.Tooltip("sport:N", title="Type"),
-                alt.Tooltip(f"{measure}:Q", title=title, format=".0f"),
-            ],
-        )
+    """One bar per activity group, largest first."""
+    colours = TYPE_COLOURS[theme()]
+    df = df.assign(
+        sport=df["activity_group"].map(SPORT_NAMES).fillna(df["activity_group"]),
+        colour=df["activity_group"].map(colours).fillna(OTHER_TYPE_COLOUR[theme()]),
     )
+    base = alt.Chart(df).encode(
+        y=alt.Y("sport:N", title=None, sort=alt.EncodingSortField(measure, order="descending")),
+        x=alt.X(f"{measure}:Q", title=title, axis=measure_axis(measure),
+                scale=headroom(df[measure].max() if len(df) else 0)),
+    )
+    bars = base.mark_bar().encode(
+        color=alt.Color("colour:N", scale=None),
+        **tooltips([
+            alt.Tooltip("sport:N", title="Type"),
+            alt.Tooltip(f"{measure}:Q", title=title, format=".0f"),
+        ]),
+    )
+    chart = bars + value_text(base, measure, align="left", baseline="middle", dx=4)
     st.altair_chart(chart, width="stretch")
 
 
@@ -181,24 +231,22 @@ def group_months(df, group, measure, title, today, months=12):
         .reindex(grid, fill_value=0)
         .reset_index()
     )
-    top = max(df[measure].max(), 1)
+    y_scale = headroom(df[measure].max())
     colour = GROUP_COLOURS[theme()][dashboard.GROUP_ORDER.index(group)]
     for label in labels:
         st.caption(LABEL_NAMES[label])
-        chart = (
-            alt.Chart(df[df["label"] == label])
-            .mark_bar(color=colour)
-            .encode(
-                x=alt.X("yearmonth(month):O", title=None, axis=alt.Axis(format="%b", labelAngle=0)),
-                y=alt.Y(f"{measure}:Q", title=None, scale=alt.Scale(domain=[0, top]), axis=measure_axis(measure)),
-                tooltip=[
-                    alt.Tooltip("yearmonth(month):O", title="Month", format="%b %Y"),
-                    alt.Tooltip(f"{measure}:Q", title=title, format=".0f"),
-                ],
-            )
-            .properties(height=110)
+        base = alt.Chart(df[df["label"] == label]).encode(
+            x=alt.X("yearmonth(month):O", title=None, axis=alt.Axis(format="%b", labelAngle=0)),
+            y=alt.Y(f"{measure}:Q", title=None, scale=y_scale, axis=measure_axis(measure)),
         )
-        st.altair_chart(chart, width="stretch")
+        bars = base.mark_bar(color=colour).encode(**tooltips([
+            alt.Tooltip("yearmonth(month):O", title="Month", format="%b %Y"),
+            alt.Tooltip(f"{measure}:Q", title=title, format=".0f"),
+        ]))
+        values = value_text(
+            base.transform_filter(f"datum.{measure} > 0"), measure, baseline="bottom", dy=-2
+        )
+        st.altair_chart((bars + values).properties(height=110), width="stretch")
 
 
 def show_stats(today):
