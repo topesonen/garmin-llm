@@ -27,8 +27,8 @@ Work in progress. The plan and the session log are in [PROJECT.md](PROJECT.md).
 | Question to SQL to result, on the command line and as a Streamlit page reached from the phone over Tailscale | Done |
 | Model selection: evaluation set (34 questions plus 16 held-out), harness, experiments | Done |
 | The chosen model, `claude-haiku-5-5`, in the live app, with structured output and its eval baseline | Done |
-| A dashboard of fixed stats next to the question box | Planned |
-| Running on an always-on server, over HTTPS | Next |
+| Running on an always-on server, over HTTPS within the tailnet | Done |
+| A dashboard of fixed stats next to the question box | Next |
 | Synthetic data, so others can run it | Not started |
 
 ## How the model was chosen
@@ -208,7 +208,7 @@ The numbers come from the files in [results/processed/summaries/](results/proces
 3. `src/guardrails.py` allows only a single `SELECT` that reads the `activities` table, using DuckDB's own parser.
 4. `src/app.py` runs the query on a read-only connection with no file or network access, a timeout and a row limit.
 
-`src/ui.py` is a Streamlit page over the same pipeline, opened from the phone over Tailscale.
+`src/ui.py` is a Streamlit page over the same pipeline. It runs as a systemd service on a small server and is opened from the phone over HTTPS within the Tailscale network; see [docs/server.md](docs/server.md).
 
 Local models are reached through the OpenAI-compatible API, so a different server can be used by setting `LLM_BASE_URL` and `LLM_MODEL`. Models whose name starts with `claude-` go through the Anthropic Python SDK (`src/send_anthropic.py`). The live app uses `claude-haiku-5-5`; set `LLM_MODEL` or pass `--model` to use a local model instead.
 
@@ -256,6 +256,8 @@ pip install -r requirements.txt
 4. Set `ANTHROPIC_API_KEY`, because the app uses `claude-haiku-5-5`. Then ask a question: `python src/app.py "What was my longest run?"`, or open the page with `streamlit run src/ui.py`.
 5. To use a local model instead: `ollama pull qwen2.5-coder:1.5b`, then pass `--model qwen2.5-coder:1.5b` or set `LLM_MODEL`.
 
+To run the page on a server as a service, see [docs/server.md](docs/server.md).
+
 The eval needs a frozen copy of the database (`python scripts/freeze_snapshot.py`) and then runs with, for example:
 
 ```
@@ -272,8 +274,8 @@ The gold queries in `eval/questions.yaml` were verified against my data. On anot
 - The raw export, the database and anything derived from individual activities are gitignored.
 - Activity titles are not loaded as they are; leading place names are removed, and the table has no location columns.
 - Aggregate figures about the real data (row counts, date range, ranges) appear in the docs on purpose. Individual activities are not published.
-- With a hosted model, in the eval or in the live app, only the prompt goes to the Anthropic API: instructions, schema, examples and the question. The query runs on my own machine, so result rows never reach the model provider. The retry is refused for hosted models, because its message can quote values from the data. Anything else that would send rows or DuckDB error text to the model, such as an answer in words, needs a separate decision first.
-- The page is reachable over Tailscale only, not from the public internet.
+- With a hosted model, in the eval or in the live app, only the prompt goes to the Anthropic API: instructions, schema, examples and the question. The query runs on my own laptop or server, so result rows never reach the model provider. The retry is refused for hosted models, because its message can quote values from the data. Anything else that would send rows or DuckDB error text to the model, such as an answer in words, needs a separate decision first.
+- The page is reachable over Tailscale only, not from the public internet. On the server it listens on localhost and `tailscale serve` (not Funnel) puts it on the tailnet.
 
 The rules are in the Privacy section of [PROJECT.md](PROJECT.md).
 
@@ -283,6 +285,7 @@ The rules are in the Privacy section of [PROJECT.md](PROJECT.md).
 - [docs/schema.md](docs/schema.md): the `activities` table, also used as the model's schema context
 - [docs/data_notes.md](docs/data_notes.md): quirks of the export and how the ingest handles them
 - [docs/environment.md](docs/environment.md): machine, versions, model digest, measurements
+- [docs/server.md](docs/server.md): how the page runs on the server, and routine tasks
 - [docs/validation.md](docs/validation.md): manual check of the ingest
 - [eval/questions.yaml](eval/questions.yaml): the evaluation questions and gold SQL
 - [eval/questions_heldout.yaml](eval/questions_heldout.yaml): the held-out questions

@@ -9,11 +9,11 @@ Phases:
 
 The model is reached through one request format (`src/generate_sql.py` for OpenAI-compatible servers, `src/send_anthropic.py` for the hosted model), so changing the model is a config change, not a rewrite.
 
-## Current status (2026-10-16)
+## Current status (2026-10-22)
 
 Done:
-- Data source: Garmin Connect activities CSV export (`Activities.csv`), stored in `data/raw/` (gitignored).
-- `src/ingest_csv.py` loads it into `data/warehouse/garmin.duckdb` as `raw_activities` (text, Title column removed) and `activities` (typed, cleaned).
+- Data source (since 2026-10-22, M4): the Garmin Connect Personal API. `src/ingest_api.py` fetches the full history and rebuilds `data/warehouse/garmin.duckdb`: `raw_activities` (the API fields used, API units, `garmin_activity_id`; no name, location or owner fields) and `activities` (same schema as before). Details in `docs/data_notes.md`.
+- Earlier source: the activities CSV export (`Activities.csv` and later exports, `data/raw/`, gitignored), loaded by `src/ingest_csv.py`, which now takes several exports and drops duplicate start times. Kept as an offline archive and fallback.
 - `docs/schema.md`: column-level schema with units, written to double as the model's schema context.
 - `docs/data_notes.md`: export quirks, how each was handled, unit checks done from the data, and notes for eval questions.
 - `.gitignore` covering raw data, private config, the DuckDB file, CSVs and real-data results.
@@ -80,11 +80,34 @@ Done, continued:
   - Main set, `claude-haiku-5-5-b61a9f98`: 31 of 34 correct (strict), execution accuracy 24 of 27, lenient 34 of 34 and 27 of 27, valid SQL 27 of 27, declined 7 of 7, answerable declined 0 of 27; simple 8 of 9, date logic 5 of 7, window 5 of 5, multi-step 6 of 6. The three strict failures (q007, q031, q032; read by the agent) are right answers plus context columns; q007's interpretation names the extra column. Against `f2f8e7d5` (text format, before the narrowed note): q003 and q015 became correct, nothing broke. 83,912 tokens in, 5,750 out, about $0.011. Median latency 2.1 s and 162.5 generated tokens (text format: 1.03 s, 90.5): the interpretation is written before the query.
   - Agent's recommendation, accepted by Topias: no further prompt change; a rule against context columns would be written from these three failures, the tuning that did not carry over in Phase A, and in the app the context columns are useful.
   - Held-out, `claude-haiku-5-5-2f9bf096`, run once: 14 of 16 correct (strict), execution accuracy 12 of 13, lenient 15 of 16 and 13 of 13, declined 2 of 3, one unanswerable question answered with a query that ran, answerable declined 0 of 13; simple 3 of 3, date logic 2 of 3, window 4 of 4, multi-step 3 of 3. 39,459 tokens in, 2,764 out, about $0.005. Earlier held-out runs: `c34994c1` (old prompt, text) 16 of 16, `474d2609` (new prompt, text) 13 of 16. Failures not read, by the held-out rule. The answered unanswerable question is the one result that matters for the app (a query ran where the model should have declined); whether to look at it is Topias's call, and any prompt change based on it would end the held-out set's use as a fair test.
+- M1 done-when (2026-10-19): Topias used the page on the real data from the phone, now on the server (M3).
+- M3, always on (2026-10-19, agent, each step approved by Topias). Details and routine tasks in `docs/server.md`.
+  1. Server `ubuntu-4gb-hel1-2` checked: Ubuntu 24.04, Python 3.12.3, 2 vCPU, 2.5 GB of 3.7 GB RAM free, 31 GB disk free; OpenClaw on localhost, port 8501 free, no `tailscale serve` config. Login is `root` over the Tailscale IP.
+  2. System user `garmin` (no login shell); repo cloned over HTTPS to `/opt/garmin-llm` at `1b7366f`; venv with the pinned requirements (590 MB).
+  3. Database copied with `scp` over Tailscale: same size and SHA-256 as on the laptop, 546 rows in `activities` on both (count only). `root:garmin 640`, so the app user can read but not write it (checked).
+  4. A separate API key for the server, written by Topias to `/etc/garmin-llm.env` (`root:root 600`) without the key passing through the agent; the agent checked the format and permissions only.
+  5. `deploy/garmin-llm.service`: runs `streamlit run src/ui.py` as `garmin` on `127.0.0.1:8501`, key from the environment file, restart on failure, systemd hardening. Enabled; health check `ok`.
+  6. `tailscale serve --bg 8501`: `https://ubuntu-4gb-hel1-2.<tailnet>.ts.net/`, tailnet only, Let's Encrypt certificate. Enabling Serve also enabled Funnel for the tailnet; Topias removed the `funnel` attribute from the tailnet policy, and the server no longer has the capability (checked).
+  7. Topias opened the page from the phone: it works, and the copy button works over HTTPS.
+  The laptop's `streamlit run ... --server.address $(tailscale ip -4)` command is no longer needed for daily use.
+- M4, fresh data (2026-10-21/22, agent, each step approved by Topias):
+  1. Unofficial `garminconnect` 0.3.19 tried first (`garth` is deprecated): login worked after two HTTP 429s from Garmin's login server. Dropped the same day when Topias found Garmin's official Personal API; the library, its login script and its saved token were removed.
+  2. Personal API: Topias created a key (`~/.config/garmin-llm/garmin.env`, mode 600, written without passing through the agent). `src/garmin_api.py` swaps it for a 24-hour token and pages through the activity list. Undocumented findings: the token comes back as plain text, resource calls take `Bearer`, and large pages fail with HTTP 500 (looks like a reply-size limit, about 160 to 190 kB), so pages are 20 activities with a halving retry.
+  3. Topias's export `Activities_22_10_2026.csv` ingested together with `Activities.csv`: 16 duplicates dropped, all identical to the kept rows; 550 activities, 550 distinct start times; the 546 earlier rows unchanged (checked with `EXCEPT` against a backup).
+  4. `scripts/compare_api_csv.py` (aggregates only, `results/raw/real/api_vs_csv_2026-10-22.json`): 550 of 550 activities matched on start time, one to one; every column agrees within the CSV's rounding except stride length (API in cm), zeros the CSV wrote as `--`, pace or speed by type, and four hand-corrected manual runs. Topias's edits in Garmin Connect fixed their timer time and calories, but Garmin keeps the wrong elapsed time (34 to 57 h) and Connect cannot edit it.
+  5. Topias decided: sync everything from the API; zeros become NULL except training effect and elevation (the more robust choice for averages; keeping zeros is an open decision); pace for running types and hiking, speed for the rest; `raw_activities` holds API fields. Agent's rule, approved through the recommendation: a manual activity with elapsed time longer than its timer time gets the timer time for elapsed time and best lap; it reproduces the four hand corrections exactly.
+  6. `src/ingest_api.py` built and run on the live database. Compared with the CSV-built table: same schema, same 550 ids on the same start times, identical types and labels, all values within rounding; the API adds 5 values the CSV lacked (4 paces, 1 calorie value). The database is written to a temporary file and moved into place.
+  7. `docs/schema.md` (part of the prompt), approved by Topias: `raw_activities` "holds source fields for the ingest", and `avg_pace_s_per_km` no longer says it is rounded to whole seconds. Haiku rerun on the frozen snapshot: main `claude-haiku-5-5-38407ef9` 30 of 34 strict (baseline `b61a9f98`: 31), 34 of 34 lenient (34); the one change is q003, the right value with three extra columns, the known Haiku habit with no sampling control. Held-out `claude-haiku-5-5-17145c63`: 14 of 16 strict, 15 of 16 lenient, every verdict the same as `2f9bf096`.
+  Topias asked whether the manual-run rule would cut a recorded run with a pause: no, it applies only to activities Garmin flags as manually entered. Checked: all 545 recorded activities keep Garmin's elapsed time, 113 of them longer than the timer time, 6 more than 1.5 times.
+- Seen during M3, outside this project: nginx on port 80 and a node process on port 8080 listen on all addresses of the server, and `ufw` is off. Whether the Hetzner firewall blocks them was not checked; Topias may want to.
+
 Open:
 - Held-out run `claude-haiku-5-5-2f9bf096` answered one unanswerable question with a query; whether to read that failure is Topias's call (see above).
-- The page's copy button fails over plain HTTP; HTTPS with `tailscale serve` in M3.
 
-Next: Topias checks a known aggregate question on the real data from the page (M1 done-when), then M3 (server, HTTPS with `tailscale serve`). Smaller options: a start script or `.streamlit/config.toml` for the long command.
+Open (M4):
+- The server still has the database from 2026-10-19.
+
+Next: M4 on the server: the key in a root-only file, a systemd timer that runs `src/ingest_api.py`, and write access to the database for the sync job only.
 
 ## Why this project
 
@@ -115,18 +138,21 @@ Implications:
 |---|---|---|
 | Generator models (2 to 3) | Small models from the Ollama library, including at least one code/SQL-oriented model if available, plus one 7B/8B for comparison. Verify availability and licence at decision time. | Partly decided: `qwen2.5-coder:1.5b` (baseline) and `qwen2.5-coder:7b` (Topias, 2026-10-08), both Apache 2.0. Second family (2026-10-14): `ministral-3:8b`, Apache 2.0, after `duckdb-nsql:7b` scored 0 of 4 in a smoke test. Hosted reference (2026-10-15): `claude-haiku-5-5`, zero-shot, no retry, thinking off; a reference point at first. Production model (Topias, 2026-10-16): `claude-haiku-5-5` in the live app, with structured output; local models for offline tests |
 | Exclude accidental short activities in eval questions | Yes / no, and threshold | TBD |
+| API zeros: NULL or 0 | The CSV wrote `--` for zero, so 0 m distance or 0 steps became NULL. The API sends 0. Keeping zeros is more accurate ("none" instead of "not recorded") but changes averages and what NULL means in `docs/schema.md` | Decided for now 2026-10-22: NULL, except `aerobic_te` and elevations. To reconsider (Topias) |
 | Full Garmin account export later (FIT files, sleep, VO2max) | See `GARMIN_SETUP.md`. Not needed for v1. | Deferred |
-| Interface | CLI only, or a minimal web UI (e.g. Streamlit or Gradio) | Decided 2026-10-15: CLI plus a Streamlit page (`src/ui.py`), reached from the phone over Tailscale. Ingestion stays the manual CSV export (alternatives considered: unofficial `garminconnect` API, Strava or intervals.icu API, full account export) |
+| Interface | CLI only, or a minimal web UI (e.g. Streamlit or Gradio) | Decided 2026-10-15: CLI plus a Streamlit page (`src/ui.py`), reached from the phone over Tailscale. Ingestion: the manual CSV export at first; since 2026-10-22 the Garmin Connect Personal API (alternatives considered: unofficial `garminconnect`, tried and dropped; Strava or intervals.icu API; full account export) |
 | Repo name and visibility | | Decided 2026-10-03: `garmin-llm`, public |
 | GPU use in Phase A | CPU-only, or install the NVIDIA driver and test offload to the MX250 | Decided 2026-10-03: CPU-only |
 | How `docs/validation.md` stays private | Gitignore the file, or record only pass/fail per field with no values. `docs/` is committed and the repo is public. | Decided 2026-10-05: pass/fail per field only in `docs/validation.md`; the compared values go in `data/private/validation_values.md` (gitignored) |
 
 ## Stack
 
-- Python, pinned dependencies in `requirements.txt` (currently anthropic, duckdb, openai, pandas, PyYAML, streamlit).
+- Python, pinned dependencies in `requirements.txt` (currently anthropic, duckdb, openai, pandas, PyYAML, requests, streamlit).
 - DuckDB as the warehouse (`data/warehouse/garmin.duckdb`).
 - Ollama for generation, accessed through the OpenAI Python client and the Ollama OpenAI-compatible endpoint. Check the current Ollama docs for supported endpoints before relying on them.
 - Anthropic Python SDK (`anthropic`) for the production model `claude-haiku-5-5`, in the live app and the eval (`src/send_anthropic.py`), with structured output. The key is read from `ANTHROPIC_API_KEY`, set in the user's shell profile, never in the repo.
+- Garmin Connect Personal API for the data (`src/garmin_api.py`), with a personal key read from `GARMIN_API_KEY` or `~/.config/garmin-llm/garmin.env`, never in the repo.
+- Server (M3): Hetzner `ubuntu-4gb-hel1-2`, Ubuntu 24.04; the page as a systemd service behind `tailscale serve` (`deploy/garmin-llm.service`, `docs/server.md`).
 
 ## Pipeline
 
@@ -216,10 +242,10 @@ Goal: open the page on the phone and see current stats at once; ask anything els
 | Milestone | What | Status |
 |---|---|---|
 | M0. Reframe | This file and `README.md` describe the app; Phase A results kept as "how the model was chosen" | Done 2026-10-16 |
-| M1. Haiku in the live app | Model chosen by config in `src/app.py`, reusing `src/send_anthropic.py`; Haiku default, `qwen2.5-coder:1.5b` for offline tests. Eval rerun on Haiku with the corrected schema wording as the production baseline | Baseline committed 2026-10-19 (`b61a9f98`, `2f9bf096`); Topias to check a known question on the real data from the page |
+| M1. Haiku in the live app | Model chosen by config in `src/app.py`, reusing `src/send_anthropic.py`; Haiku default, `qwen2.5-coder:1.5b` for offline tests. Eval rerun on Haiku with the corrected schema wording as the production baseline | Done 2026-10-19 (baseline `b61a9f98`, `2f9bf096`; checked on the real data from the page) |
 | M2. Stats at a glance | Dashboard tab from fixed SQL, no model: this week and month, recent activities, trends, a few charts. Question box as the second tab | To do |
-| M3. Always on | Run on the server `ubuntu-4gb-hel1-2` as a systemd service, reachable over Tailscale only. The DuckDB file may live there (Topias, 2026-10-16); copied after each ingest, or ingested there | To do |
-| M4. Fresh data | Keep the manual CSV export, or sync automatically (unofficial `garminconnect`). Topias decides | To do |
+| M3. Always on | Run on the server `ubuntu-4gb-hel1-2` as a systemd service, reachable over Tailscale only. The DuckDB file may live there (Topias, 2026-10-16); copied after each ingest, or ingested there | Done 2026-10-19: systemd service as user `garmin`, HTTPS through `tailscale serve`, database copied after each ingest (`docs/server.md`) |
+| M4. Fresh data | Sync automatically from the Garmin Connect Personal API (Topias, 2026-10-22; unofficial `garminconnect` tried and dropped) | In progress: `src/ingest_api.py` runs on the laptop; server timer to do |
 | M5. AI engineering depth | One at a time, Topias picks: eval as a pre-release check with a cost cap; charts from questions; multi-query tool use scored on the window and multi-step questions; a log of live questions (no rows) feeding new eval questions; optionally a short answer in words from the result rows (sends rows to the model, needs a privacy decision) | To do |
 
 Done when (each milestone): CLI and page answer a known aggregate question, the production model's eval summary is committed, status and session log updated.
@@ -239,7 +265,7 @@ Phase B decisions (model, GPU provider, GPU type, spend cap) are made by Topias 
 - **`eval/questions.yaml` is public** (Topias, 2026-10-07). It holds question text and gold SQL only, and gold answers are computed at run time, so it contains no value from the real data. It was private while label-based questions were planned; those were dropped. Questions and notes must not contain label values, race names, places or query results.
 - **Aggregates of the real data in this public repo are there on purpose** (Topias, 2026-10-05). `docs/data_notes.md` and this file contain row counts, the date range, counts per check, and minimum, maximum and range values computed from the real activities. The handful of example labels in `docs/schema.md` were also approved for publication (2026-10-03); other label values stay private. Individual rows are not published.
 - **Hosted reference runs** (Topias, 2026-10-15): a hosted model may be called from the eval with the prompt only (instructions, schema, examples, question; all public). Queries and gold queries run locally. `--retry` is refused for hosted models in `run_eval.py`, because the retry message quotes DuckDB errors, which can contain values from the data.
-- **Live app with a hosted model** (Phase C): the model gets the instructions, schema and question only; the SQL runs on Topias's own machine or server, so result rows do not reach the model provider. Anything that would send rows or DuckDB error text to the model (an answer in words, a retry with the error) needs Topias's decision first. The page is reachable over Tailscale only.
+- **Live app with a hosted model** (Phase C): the model gets the instructions, schema and question only; the SQL runs on Topias's own machine or server, so result rows do not reach the model provider. Anything that would send rows or DuckDB error text to the model (an answer in words, a retry with the error) needs Topias's decision first. The page is reachable over Tailscale only: on the server it listens on localhost, `tailscale serve` puts it on the tailnet, and Funnel is not allowed in the tailnet policy. The server has its own API key, readable by root only.
 - **Claude Code is a cloud model.** Anything it reads or prints goes to Anthropic. During development, the agent works against the schema and synthetic data; it does not open `data/raw/`, does not print real rows, and checks real-data logic with aggregate queries (counts, null rates, min/max) unless Topias explicitly asks otherwise in the session.
 
 ## Repo layout
@@ -252,17 +278,21 @@ garmin-llm/
   GARMIN_SETUP.md         full account export, for later
   requirements.txt
   .gitignore
+  deploy/
+    garmin-llm.service    systemd unit for the server (docs/server.md)
   configs/                one YAML per experiment configuration
     fewshot_v1.yaml       worked examples for the few-shot experiment
     fewshot_v2.yaml       v1 plus one example of declining
     fewshot_v3.yaml       v2 with a plan before each query (--plan)
     schema_minimal.md     names, types and category values only (--schema)
-  data/raw/               gitignored: Activities.csv
+  data/raw/               gitignored: Activities.csv and later CSV exports (archive)
   data/private/           gitignored: place_names.txt, validation_values.md
   data/warehouse/         gitignored real DB; synthetic DB may be committed
   data/synthetic/         synthetic CSV/DB, committed
   src/
-    ingest_csv.py         done
+    ingest_csv.py         done; the earlier source, takes several exports
+    garmin_api.py         Personal API: key, token, activity pages
+    ingest_api.py         the data source: full rebuild from the API
     prompt.py             done
     generate_sql.py       done
     guardrails.py         done
@@ -284,6 +314,7 @@ garmin-llm/
   scripts/
     bench_prompt.py       done
     freeze_snapshot.py    done
+    compare_api_csv.py    API against the CSV-built table, aggregates only
     make_synthetic.py
   results/raw/
     environment/          A0 benchmark runs, committed
@@ -293,6 +324,7 @@ garmin-llm/
     schema.md             done
     data_notes.md         done
     environment.md        done
+    server.md             the page on the server: layout, routine tasks
     validation.md         done; pass/fail only, no values
   scratch/                gitignored: ad hoc queries against the real data
   costs.md                Phase B only
@@ -349,3 +381,5 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-16 | C | M0 done: README reframed as the app. M1: `claude-haiku-5-5` is the app's default model; prompt rules for "previous/last" and "how long" after a phone test; `extract_sql` skips a sentence before the query. Haiku rerun: 29 of 34 main, 13 of 16 held-out (old prompt 31 and 16); four of five main failures are right answers with extra columns, one caused by the "how long" note | Topias: decide on the prompt notes, the column rule and a lenient score (deferred) |
 | 2026-10-18/19 | C | Structured output for the hosted model (`REPLY_SCHEMA`: interpretation, cannot_answer, sql) in the app, the page ("Read as" line) and the eval (`--text-format` keeps the old reply). Checked: text-format rebuild of the last Haiku run identical, four structured questions scored as expected | Topias: the deferred decision; then the full Haiku run on both sets with structured output, then M3 (server) |
 | 2026-10-19 | C | Topias decided: narrow the "how long" note, keep the column rule, add a lenient score, commit the earlier summaries. Lenient score built and checked against the hand-checked failures. M1 baseline with structured output: main 31 of 34 strict, 34 of 34 lenient; held-out 14 of 16 strict, 15 of 16 lenient, one unanswerable question answered. About $0.017 for both | Topias: real-data check from the page; whether to look at the held-out unanswerable failure; then M3 |
+| 2026-10-19 | C | M1 done: Topias checked the page on the real data. M3 done: the page runs on `ubuntu-4gb-hel1-2` as a systemd service (user `garmin`, localhost only, own API key in a root-only file), database copied over Tailscale, HTTPS within the tailnet through `tailscale serve`; Funnel removed from the tailnet policy. Copy button works. `deploy/garmin-llm.service` and `docs/server.md` added | Topias: M2 or M4 next; held-out unanswerable failure still undecided |
+| 2026-10-21/22 | C | M4: unofficial `garminconnect` tried, then replaced by Garmin's official Personal API (key, 24 h token, undocumented page-size limit). New CSV export ingested with duplicates dropped (550 activities). API compared with the CSV table column by column (550 of 550 matched); `src/ingest_api.py` reproduces the table and is now the source of the live database; manual-run rule replaces the four hand corrections | Agent: the server timer for `ingest_api.py`; schema lines updated and Haiku eval rerun (30/34 and 14/16 strict, lenient unchanged) |

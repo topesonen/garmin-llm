@@ -1,12 +1,16 @@
 """Load the Garmin Connect activities CSV export into DuckDB.
 
-Input:  data/raw/Activities.csv (Garmin Connect > Activities > Export CSV)
+Input:  data/raw/Activities.csv (Garmin Connect > Activities > Export CSV),
+        optionally followed by later exports. Rows are matched on Date (start
+        time): a row already loaded from an earlier file wins, so the hand
+        corrections in Activities.csv are kept. Columns an export leaves out
+        (Garmin drops empty ones) are treated as missing.
 Output: data/warehouse/garmin.duckdb with tables
         raw_activities  all CSV columns except Title, as text
         activities      cleaned, typed, units documented in docs/schema.md
 
 Usage:
-    python src/ingest_csv.py [--csv PATH] [--db PATH] [--places PATH]
+    python src/ingest_csv.py [--csv PATH ...] [--db PATH] [--places PATH]
 """
 
 import argparse
@@ -182,14 +186,30 @@ def clean(raw, places):
     return out
 
 
+def read_exports(paths):
+    """Concatenate CSV exports, keeping the first row seen for each Date."""
+    frames = [pd.read_csv(p, dtype=str, keep_default_na=False) for p in paths]
+    raw = pd.concat(frames, ignore_index=True).fillna("")
+    first = ~raw["Date"].duplicated(keep="first")
+    dropped = raw[~first]
+    # Compare with placeholders normalised, so a column one export left out
+    # does not count as a difference.
+    kept = raw[first].set_index("Date").loc[dropped["Date"]].map(parse_missing)
+    other = dropped.set_index("Date").map(parse_missing)
+    differing = int((kept.fillna("") != other.fillna("")).any(axis=1).sum())
+    print(f"files: {len(paths)}, rows read: {len(raw)}, duplicates dropped: {len(dropped)}, "
+          f"of which differ from the kept row: {differing}")
+    return raw[first].reset_index(drop=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--csv", type=Path, default=DEFAULT_CSV)
+    ap.add_argument("--csv", type=Path, nargs="+", default=[DEFAULT_CSV])
     ap.add_argument("--db", type=Path, default=DEFAULT_DB)
     ap.add_argument("--places", type=Path, default=DEFAULT_PLACES)
     args = ap.parse_args()
 
-    raw = pd.read_csv(args.csv, dtype=str, keep_default_na=False)
+    raw = read_exports(args.csv)
     places = load_places(args.places)
     activities = clean(raw, places)
 

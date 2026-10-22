@@ -1,0 +1,35 @@
+# The Streamlit page as a systemd service on the server.
+# Listens on 127.0.0.1 only; `tailscale serve` puts it on the tailnet over HTTPS.
+# Install: copy to /etc/systemd/system/, then `systemctl enable --now garmin-llm`.
+
+[Unit]
+Description=Garmin stats page (Streamlit)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=garmin
+Group=garmin
+WorkingDirectory=/opt/garmin-llm
+# One line, ANTHROPIC_API_KEY=..., readable by root only. systemd reads it
+# before switching to the garmin user.
+EnvironmentFile=/etc/garmin-llm.env
+ExecStart=/opt/garmin-llm/.venv/bin/streamlit run src/ui.py \
+    --server.address 127.0.0.1 --server.port 8501 \
+    --server.headless true --browser.gatherUsageStats false
+Restart=on-failure
+RestartSec=5
+
+# The app only reads its code and the database, so the rest of the system
+# is read-only or hidden from it.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

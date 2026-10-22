@@ -55,3 +55,21 @@ The export is not used exactly as downloaded. On 2026-10-03 Topias corrected fou
 - Timestamps are local start time, confirmed in the manual validation (2026-10-06).
 - Pace questions ask for minutes per km, not seconds per km (Topias, 2026-10-07). The pace columns stay in seconds per km, so the gold SQL divides by 60 and the expected value is decimal minutes (4.5 for 4:30 per km). The question text says so, because the harness compares values and cannot match a `4:30` string against a number.
 - NULL in `total_ascent_m` and `total_descent_m` can mean zero as well as not recorded. The export never writes 0 for elevation gain (223 rows have `--`, none has 0), and the manual validation found a track run where Garmin Connect shows 0 and the export has `--`. Sums are unaffected; averages skip those activities.
+
+## Source since 2026-10-22: Garmin Connect Personal API
+
+`src/ingest_api.py` rebuilds both tables from the Personal API on each run. The CSV notes above still describe what the table means; this section records how the API maps onto it. Checked against the CSV-built table with `scripts/compare_api_csv.py` (aggregates in `results/raw/real/api_vs_csv_2026-10-22.json`): 550 of 550 activities matched on local start time, one to one, and every column agrees within the CSV's rounding once the rules below are applied.
+
+| API behaviour | Handling |
+|---|---|
+| Distance in metres for every type (no Track Running quirk) | Divided by 1000 |
+| Speeds in m/s, for every activity | Pace (1000 / speed) for running types and hiking, km/h for the rest, as the CSV did |
+| `avgStrideLength` in centimetres (median API/CSV ratio 99.94) | Divided by 100 |
+| 0 where the CSV wrote `--` (210 distances, 52 moving times, a few cadence, elevation, Body Battery, step and rep values) | 0 becomes NULL, except `aerobic_te` and elevations, where the CSV also had real zeros (5 and 1). Keeping zeros is an open decision in `PROJECT.md` |
+| Values are not rounded (pace was whole seconds in the CSV) | Kept as they are; differences from the CSV table are at most 0.5 s/km and 0.005 km |
+| `activityName` holds place names, like `Title` | Not stored; `workout_label` is built with the same place-name stripping (550 of 550 labels equal to the CSV's) |
+| Start and end coordinates, location name, owner name and profile images in every activity | Not stored |
+| Type `assistance` (2 activities) | Excluded, as "Assistance Requested" was |
+| A few values the CSV export left empty | 4 paces (3 on manual runs) and 1 calorie value now present |
+
+The four hand-corrected runs (see "Manual corrections" above): Topias's edits in Garmin Connect fixed their timer time and calories, but Garmin keeps the original elapsed time of 34 to 57 hours, and Connect does not let it be edited. All four are manual activities with a single lap. Rule in `ingest_api.py`: a manual activity whose elapsed time is longer than its timer time gets the timer time as elapsed time, and best lap is capped at it. This reproduces the hand corrections exactly; the ingest prints how many rows it changed (4 on 2026-10-22). Of the 5 manual activities, the fifth already had elapsed time equal to timer time. The 2 recorded activities with elapsed time over 8 hours are real long pauses and are left alone.

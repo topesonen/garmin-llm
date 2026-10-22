@@ -1,0 +1,147 @@
+{
+  "config": {
+    "name": "claude-haiku-5-5-17145c63",
+    "started": "2026-10-22T09:46:46+00:00",
+    "finished": "2026-10-22T09:47:22+00:00",
+    "model": "claude-haiku-5-5",
+    "model_digest": null,
+    "ollama_version": null,
+    "temperature": null,
+    "seed": null,
+    "system_prompt_sha256": "1a9f3d956c80dd015f500ad8cbf6873ea8f4e3a0d8b56b7df125b59a04b8ca1d",
+    "examples_file": null,
+    "examples_sha256": null,
+    "retry": false,
+    "retry_prompt_sha256": null,
+    "snapshot_sha256": "cf04b1e90e6c8bfbf9ce9dc0a7a4fdf6fd2fae0e6124b64ce44144245f4bbea2",
+    "questions_sha256": "84444fd699620b8f138db6597c20e6c7ae3e84f45094b21c4590a6d9923cb52b",
+    "abs_tolerance": 0.005,
+    "git_commit": "1b7366fd29461c4568f1ab91cb71e1e8c0560401",
+    "git_uncommitted_changes": true
+  },
+  "complete": true,
+  "missing_questions": [],
+  "questions": 16,
+  "correct_overall": {
+    "count": 14,
+    "of": 16,
+    "share": 0.875
+  },
+  "execution_accuracy": {
+    "count": 12,
+    "of": 13,
+    "share": 0.9231
+  },
+  "valid_sql_rate": {
+    "count": 14,
+    "of": 14,
+    "share": 1.0
+  },
+  "unanswerable_declined": {
+    "count": 2,
+    "of": 3,
+    "share": 0.6667
+  },
+  "unanswerable_answered": {
+    "count": 1,
+    "of": 3,
+    "share": 0.3333
+  },
+  "answerable_declined": {
+    "count": 0,
+    "of": 13,
+    "share": 0.0
+  },
+  "lenient": {
+    "correct_overall": {
+      "count": 15,
+      "of": 16,
+      "share": 0.9375
+    },
+    "execution_accuracy": {
+      "count": 13,
+      "of": 13,
+      "share": 1.0
+    }
+  },
+  "retry": null,
+  "by_category": {
+    "simple": {
+      "count": 3,
+      "of": 3,
+      "share": 1.0
+    },
+    "date_logic": {
+      "count": 2,
+      "of": 3,
+      "share": 0.6667
+    },
+    "window": {
+      "count": 4,
+      "of": 4,
+      "share": 1.0
+    },
+    "multi_step": {
+      "count": 3,
+      "of": 3,
+      "share": 1.0
+    },
+    "unanswerable": {
+      "count": 2,
+      "of": 3,
+      "share": 0.6667
+    }
+  },
+  "verdicts": {
+    "correct": 12,
+    "declined_correctly": 2,
+    "wrong_result": 1,
+    "answered_unanswerable": 1
+  },
+  "error_categories": null,
+  "performance": {
+    "ttft_s": {
+      "median": 1.42,
+      "min": 1.18,
+      "max": 2.23
+    },
+    "latency_s": {
+      "median": 2.09,
+      "min": 1.53,
+      "max": 2.83
+    },
+    "generation_tokens_per_s": {
+      "median": 276.31,
+      "min": 128.18,
+      "max": 624.62
+    },
+    "prompt_tokens": {
+      "median": 2424.0,
+      "min": 2408,
+      "max": 2471
+    },
+    "completion_tokens": {
+      "median": 157.0,
+      "min": 39,
+      "max": 289
+    }
+  },
+  "per_question": {
+    "h001": "correct",
+    "h002": "correct",
+    "h003": "correct",
+    "h004": "wrong_result",
+    "h005": "correct",
+    "h006": "correct",
+    "h007": "correct",
+    "h008": "correct",
+    "h009": "correct",
+    "h010": "correct",
+    "h011": "correct",
+    "h012": "correct",
+    "h013": "correct",
+    "h014": "answered_unanswerable",
+    "h015": "declined_correctly",
+    "h016": "declined_correctly"
+  }
+}
