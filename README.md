@@ -280,6 +280,7 @@ The gold queries in `eval/questions.yaml` were verified against my data. On anot
 - Aggregate figures about the real data (row counts, date range, ranges) appear in the docs on purpose. Individual activities are not published.
 - With a hosted model, in the eval or in the live app, only the prompt goes to the Anthropic API: instructions, schema, examples and the question. The query runs on my own laptop or server, so result rows never reach the model provider. The retry is refused for hosted models, because its message can quote values from the data. Anything else that would send rows or DuckDB error text to the model, such as an answer in words, needs a separate decision first.
 - The page is reachable over Tailscale only, not from the public internet. On the server it listens on localhost and `tailscale serve` (not Funnel) puts it on the tailnet.
+- The same data can also be reached from Claude through [garmin-mcp](https://github.com/topesonen/garmin-mcp), a separate MCP server. There Claude writes and runs its own read-only queries, so result rows do reach Anthropic; that was a separate decision, and it does not change the app.
 
 The rules are in the Privacy section of [PROJECT.md](PROJECT.md).
 
