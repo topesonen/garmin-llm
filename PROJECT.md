@@ -9,7 +9,7 @@ Phases:
 
 The model is reached through one request format (`src/generate_sql.py` for OpenAI-compatible servers, `src/send_anthropic.py` for the hosted model), so changing the model is a config change, not a rewrite.
 
-## Current status (2026-10-22)
+## Current status (2026-10-23)
 
 Done:
 - Data source (since 2026-10-22, M4): the Garmin Connect Personal API. `src/ingest_api.py` fetches the full history and rebuilds `data/warehouse/garmin.duckdb`: `raw_activities` (the API fields used, API units, `garmin_activity_id`; no name, location or owner fields) and `activities` (same schema as before). Details in `docs/data_notes.md`.
@@ -102,12 +102,21 @@ Done, continued:
   Topias asked whether the manual-run rule would cut a recorded run with a pause: no, it applies only to activities Garmin flags as manually entered. Checked: all 545 recorded activities keep Garmin's elapsed time, 113 of them longer than the timer time, 6 more than 1.5 times.
 - Seen during M3, outside this project: nginx on port 80 and a node process on port 8080 listen on all addresses of the server, and `ufw` is off. Whether the Hetzner firewall blocks them was not checked; Topias may want to.
 
+- M2, stats at a glance (2026-10-22/23, agent, each step approved by Topias). In progress; deployed to the server at `1223c0d`.
+  1. Three columns added to `activities` for the dashboard (schema change approved by Topias): `anaerobic_te`, `training_load` and `training_effect_label` (Garmin's primary benefit; its `UNKNOWN` becomes NULL). The API sends them; the CSV export does not, so `ingest_csv.py` writes NULL. Zero training load and zero anaerobic TE are kept as values. Checked with counts: 545 of 550 activities have TE and load, 531 a label. Live database rebuilt on the laptop and on the server; same counts on both.
+  2. Haiku rerun with the three new schema lines on the old frozen snapshot (option (a), Topias): main `claude-haiku-5-5-6cffdef5` 30 of 34 strict, 34 of 34 lenient, every verdict as in `38407ef9`; held-out `claude-haiku-5-5-a676adc1` 13 of 16 strict, 14 of 16 lenient (`17145c63`: 14 and 15). The one change is h013, rejected because the reply had a literal `...` inside its WHERE clause. Check without the cache (`results/raw/real/h013_check_2026-10-22/`, gitignored): h013 five times with the old schema text, 4 correct, five times with the new, 3 correct, no `...` in any of the 10. Every wrong reply filters activities to 2025 before grouping into weeks and so loses the 2026 days of the week starting 2025-12-29. The `...` reply looks like a rare glitch; h013 is flaky with either text.
+  3. `src/dashboard.py`: fixed queries, one function per block, each taking a read-only connection and the dates: `totals()`, `training_effect_between()`, `training_effect_by_month()`, `types_between()` (trail running taken out of running), plus date helpers. Checked on the real data with sums only: every breakdown adds up to `totals()` over the same dates.
+  4. `src/ui.py` has two tabs. Stats: this week and this month (month to date against the same days of last month); a Period dropdown (this week, this month, past 7 or 30 days, past 3 or 6 months, this year, custom range) over the training effect bars and the activity type bars; training effect by month with a Detail picker that splits one intensity group into a small chart per label. A toggle switches every chart between activities and training load. Ask: the question box, unchanged.
+  5. Colours: training effect by Garmin's training load focus groups (low aerobic light blue, high aerobic orange, anaerobic purple), activity types blue running, green trail running, purple strength, yellow cardio, grey for the rest (hues chosen by Topias). Each set checked with the dataviz skill's palette validator in light and dark mode. Separate shades per label within a group failed the checks, which is why the Detail picker exists.
+  6. Phone fixes after Topias's checks: the totals wrap two by two instead of one per row; a tapped Vega tooltip never closes on a touch screen, so phones get no tooltips and every chart writes its values on the bars. The phone check of this last version is Topias's.
+  7. MCP server added to the engineering backlog (Topias, 2026-10-22).
+
 Open:
 - Held-out run `claude-haiku-5-5-2f9bf096` answered one unanswerable question with a query; whether to read that failure is Topias's call (see above).
 
 - M4 done-when (2026-10-22): Topias confirmed from the phone that the synced data shows up.
 
-Next: M2 (dashboard of fixed stats), unless Topias picks something else.
+Next: Topias checks the latest M2 version on the phone; then recent activities (last 10) and the weekly volume and running km charts.
 
 ## Why this project
 
@@ -138,7 +147,7 @@ Implications:
 |---|---|---|
 | Generator models (2 to 3) | Small models from the Ollama library, including at least one code/SQL-oriented model if available, plus one 7B/8B for comparison. Verify availability and licence at decision time. | Partly decided: `qwen2.5-coder:1.5b` (baseline) and `qwen2.5-coder:7b` (Topias, 2026-10-08), both Apache 2.0. Second family (2026-10-14): `ministral-3:8b`, Apache 2.0, after `duckdb-nsql:7b` scored 0 of 4 in a smoke test. Hosted reference (2026-10-15): `claude-haiku-5-5`, zero-shot, no retry, thinking off; a reference point at first. Production model (Topias, 2026-10-16): `claude-haiku-5-5` in the live app, with structured output; local models for offline tests |
 | Exclude accidental short activities in eval questions | Yes / no, and threshold | TBD |
-| API zeros: NULL or 0 | The CSV wrote `--` for zero, so 0 m distance or 0 steps became NULL. The API sends 0. Keeping zeros is more accurate ("none" instead of "not recorded") but changes averages and what NULL means in `docs/schema.md` | Decided for now 2026-10-22: NULL, except `aerobic_te` and elevations. To reconsider (Topias) |
+| API zeros: NULL or 0 | The CSV wrote `--` for zero, so 0 m distance or 0 steps became NULL. The API sends 0. Keeping zeros is more accurate ("none" instead of "not recorded") but changes averages and what NULL means in `docs/schema.md` | Decided for now 2026-10-22: NULL, except `aerobic_te` and elevations (and, since M2, `anaerobic_te` and `training_load`). To reconsider (Topias) |
 | Full Garmin account export later (FIT files, sleep, VO2max) | See `GARMIN_SETUP.md`. Not needed for v1. | Deferred |
 | Interface | CLI only, or a minimal web UI (e.g. Streamlit or Gradio) | Decided 2026-10-15: CLI plus a Streamlit page (`src/ui.py`), reached from the phone over Tailscale. Ingestion: the manual CSV export at first; since 2026-10-22 the Garmin Connect Personal API (alternatives considered: unofficial `garminconnect`, tried and dropped; Strava or intervals.icu API; full account export) |
 | Repo name and visibility | | Decided 2026-10-03: `garmin-llm`, public |
@@ -244,7 +253,7 @@ Goal: open the page on the phone and see current stats at once; ask anything els
 |---|---|---|
 | M0. Reframe | This file and `README.md` describe the app; Phase A results kept as "how the model was chosen" | Done 2026-10-16 |
 | M1. Haiku in the live app | Model chosen by config in `src/app.py`, reusing `src/send_anthropic.py`; Haiku default, `qwen2.5-coder:1.5b` for offline tests. Eval rerun on Haiku with the corrected schema wording as the production baseline | Done 2026-10-19 (baseline `b61a9f98`, `2f9bf096`; checked on the real data from the page) |
-| M2. Stats at a glance | Dashboard tab from fixed SQL, no model: this week and month, recent activities, trends, a few charts. Question box as the second tab | To do |
+| M2. Stats at a glance | Dashboard tab from fixed SQL, no model: this week and month, recent activities, trends, a few charts. Question box as the second tab | In progress: Stats tab with totals, training effect and activity types (`src/dashboard.py`); recent activities and weekly charts to do |
 | M3. Always on | Run on the server `ubuntu-4gb-hel1-2` as a systemd service, reachable over Tailscale only. The DuckDB file may live there (Topias, 2026-10-16); copied after each ingest, or ingested there | Done 2026-10-19: systemd service as user `garmin`, HTTPS through `tailscale serve`, database copied after each ingest (`docs/server.md`) |
 | M4. Fresh data | Sync automatically from the Garmin Connect Personal API (Topias, 2026-10-22; unofficial `garminconnect` tried and dropped) | Done 2026-10-22: hourly systemd timer on the server as user `garmin-sync`, the only writer of the database (`docs/server.md`); checked by Topias from the phone |
 | M5. AI engineering depth | One at a time, Topias picks: eval as a pre-release check with a cost cap; charts from questions; multi-query tool use scored on the window and multi-step questions; a log of live questions (no rows) feeding new eval questions; optionally a short answer in words from the result rows (sends rows to the model, needs a privacy decision) | To do |
@@ -298,7 +307,8 @@ garmin-llm/
     generate_sql.py       done
     guardrails.py         done
     app.py                done; answer() is the pipeline, main() the CLI
-    ui.py                 Streamlit page over answer()
+    dashboard.py          fixed queries for the Stats tab, no model
+    ui.py                 Streamlit page: Stats tab, and Ask over answer()
     send_anthropic.py     Anthropic API sender for the production model
   eval/
     questions.yaml        done; questions and gold SQL only, no answers
@@ -384,3 +394,4 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-19 | C | Topias decided: narrow the "how long" note, keep the column rule, add a lenient score, commit the earlier summaries. Lenient score built and checked against the hand-checked failures. M1 baseline with structured output: main 31 of 34 strict, 34 of 34 lenient; held-out 14 of 16 strict, 15 of 16 lenient, one unanswerable question answered. About $0.017 for both | Topias: real-data check from the page; whether to look at the held-out unanswerable failure; then M3 |
 | 2026-10-19 | C | M1 done: Topias checked the page on the real data. M3 done: the page runs on `ubuntu-4gb-hel1-2` as a systemd service (user `garmin`, localhost only, own API key in a root-only file), database copied over Tailscale, HTTPS within the tailnet through `tailscale serve`; Funnel removed from the tailnet policy. Copy button works. `deploy/garmin-llm.service` and `docs/server.md` added | Topias: M2 or M4 next; held-out unanswerable failure still undecided |
 | 2026-10-21/22 | C | M4: unofficial `garminconnect` tried, then replaced by Garmin's official Personal API (key, 24 h token, undocumented page-size limit). New CSV export ingested with duplicates dropped (550 activities). API compared with the CSV table column by column (550 of 550 matched); `src/ingest_api.py` reproduces the table and is now the source of the live database; manual-run rule replaces the four hand corrections | Topias: M2 next, or something else. M4 done: Topias checked the synced data from the phone. Server: `garmin-sync` user, hourly timer, first sync matches the laptop; schema lines updated and Haiku eval rerun (30/34 and 14/16 strict, lenient unchanged) |
+| 2026-10-22/23 | C | M2 started. Three columns from the API (`anaerobic_te`, `training_load`, `training_effect_label`); Haiku rerun: main unchanged, held-out 13 of 16 (h013 flaky with either schema text, checked with 5 repeats each). `src/dashboard.py` and a Stats tab: totals, training effect and activity types for a chosen period, training effect by month with a per-group detail view, colours checked with a palette validator; phone fixes for the totals layout and stuck tooltips. Deployed (`1223c0d`). MCP server added to the backlog | Topias: phone check of the latest version; then recent activities and weekly charts |

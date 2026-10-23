@@ -1,6 +1,6 @@
 # garmin-llm
 
-A small app for looking at my Garmin training data, mostly from my phone. I ask a question in plain language; a language model turns it into SQL, the SQL is checked and run against a DuckDB database of my activities, and the page shows the query and the result. The model sees only the question and a description of the table. The queries run on my own machine, so the rows never reach the model.
+A small app for looking at my Garmin training data, mostly from my phone. A Stats tab shows fixed numbers and charts at a glance: this week and month, training effect and activity types for a chosen period, and training effect by month. For anything else I ask a question in plain language; a language model turns it into SQL, the SQL is checked and run against a DuckDB database of my activities, and the page shows the query and the result. The model sees only the question and a description of the table. The queries run on my own machine, so the rows never reach the model.
 
 The model was chosen by measurement: local models on a laptop and one hosted model were run on the same 50 questions, each with a verified gold SQL query. See [How the model was chosen](#how-the-model-was-chosen).
 
@@ -29,7 +29,7 @@ Work in progress. The plan and the session log are in [PROJECT.md](PROJECT.md).
 | The chosen model, `claude-haiku-5-5`, in the live app, with structured output and its eval baseline | Done |
 | Running on an always-on server, over HTTPS within the tailnet | Done |
 | New activities synced hourly from Garmin's official Personal API | Done |
-| A dashboard of fixed stats next to the question box | Next |
+| A dashboard of fixed stats next to the question box | In progress: totals, training effect, activity types |
 | Synthetic data, so others can run it | Not started |
 
 ## How the model was chosen
@@ -178,6 +178,8 @@ Both sets were run once with this request. Every later prompt or model change is
 
 The three strict failures on the main set are right answers with context columns, such as the week's total next to the week that was asked for. On the held-out set every answerable question is right under the lenient score. One unanswerable question got a query instead of a decline; in the app that would show a table for a question the data cannot answer. The held-out failures are not read, so that the set stays a fair test.
 
+Later schema changes were checked the same way. After the switch to the Personal API (new wording for two columns): main 30 of 34 strict, 34 of 34 lenient (`claude-haiku-5-5-38407ef9`), held-out 14 of 16 and 15 of 16 (`claude-haiku-5-5-17145c63`). After adding three training effect columns: main unchanged, every verdict the same (`claude-haiku-5-5-6cffdef5`); held-out 13 of 16 and 14 of 16 (`claude-haiku-5-5-a676adc1`). The held-out drop is one multi-step question; asked five times with each schema text, it was right 4 and 3 times, so it is flaky with either text rather than broken by the change.
+
 An attempt in between, with the new notes but the plain-text reply, scored 29 of 34 and 13 of 16 (runs `claude-haiku-5-5-f2f8e7d5` and `claude-haiku-5-5-474d2609`). Its first "how long" note also fired on "distance of my longest run, in km", so it was narrowed to questions that name no unit.
 
 The structured reply about doubles the median latency (2.1 s against 1.03 s for the plain-text attempt), because the interpretation is written before the query. The two runs cost about $0.017 together.
@@ -209,7 +211,7 @@ The numbers come from the files in [results/processed/summaries/](results/proces
 3. `src/guardrails.py` allows only a single `SELECT` that reads the `activities` table, using DuckDB's own parser.
 4. `src/app.py` runs the query on a read-only connection with no file or network access, a timeout and a row limit.
 
-`src/ui.py` is a Streamlit page over the same pipeline. It runs as a systemd service on a small server and is opened from the phone over HTTPS within the Tailscale network; see [docs/server.md](docs/server.md).
+`src/ui.py` is a Streamlit page with two tabs. Stats is built from fixed queries in `src/dashboard.py`, with no model involved. Ask runs the pipeline above. It runs as a systemd service on a small server and is opened from the phone over HTTPS within the Tailscale network; see [docs/server.md](docs/server.md).
 
 Local models are reached through the OpenAI-compatible API, so a different server can be used by setting `LLM_BASE_URL` and `LLM_MODEL`. Models whose name starts with `claude-` go through the Anthropic Python SDK (`src/send_anthropic.py`). The live app uses `claude-haiku-5-5`; set `LLM_MODEL` or pass `--model` to use a local model instead.
 
