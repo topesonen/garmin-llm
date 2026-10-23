@@ -27,7 +27,7 @@ The page runs on a small Hetzner server (`ubuntu-4gb-hel1-2`: Ubuntu 24.04, 2 vC
 - The MCP server (`garmin-mcp.service`) runs as `garmin-mcp`, a system user without a login shell that gets the `garmin` group only inside the service (`SupplementaryGroups`), so it reads the warehouse and `docs/schema.md` and writes only its token database. It listens on `127.0.0.1:8765`, and Tailscale Funnel publishes it on the internet at `https://ubuntu-4gb-hel1-2.<tailnet>.ts.net/mcp`, behind OAuth with a GitHub login. It is on 443 because claude.ai never reached it on 8443.
 - Funnel is allowed in the tailnet policy only for `tag:server` (`nodeAttrs`), and this server is the only node with that tag, so no other device can publish anything. Port 443 is the only Funnel port in use; 8443 (the page) stays tailnet only.
 - Kill switch for the public MCP endpoint: `tailscale funnel --https=443 off` (nothing public any more) or `systemctl stop garmin-mcp`.
-- The Hetzner firewall allows SSH from the Tailscale range only. Log in with `ssh root@<server's Tailscale IP>`.
+- The Hetzner firewall allows SSH (22) from the Tailscale range `100.64.0.0/10` only, and port 80 from anywhere for a separate project on this server (a water heater dashboard behind nginx with a password). Nothing else is open; rules for 443 and 8080 were removed on 2026-10-23. Funnel traffic arrives through Tailscale and does not need a firewall rule. Log in with `ssh root@<server's Tailscale IP>`.
 
 ## Routine tasks
 
