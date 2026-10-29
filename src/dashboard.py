@@ -146,3 +146,28 @@ def recent(con, n=10):
         """,
         {"n": n},
     ).df()
+
+
+def weekly(con, today, weeks=12):
+    """Hours and running km for each Monday-to-Sunday week, the last one
+    being the week that holds today (so it is partial). Weeks without
+    activities are rows of zeros, not missing."""
+    first = week_start(today) - dt.timedelta(weeks=weeks - 1)
+    return con.execute(
+        """
+        WITH weeks AS (
+            SELECT unnest(generate_series($first, $last, INTERVAL 7 DAY))::DATE AS week
+        )
+        SELECT w.week,
+               coalesce(sum(a.timer_time_s), 0) / 3600 AS hours,
+               coalesce(sum(a.distance_km) FILTER (WHERE a.sport_group = 'running'), 0) AS running_km
+        FROM weeks w
+        LEFT JOIN activities a
+               ON a.start_time_local >= w.week
+              AND a.start_time_local < w.week + INTERVAL 7 DAY
+              AND a.start_time_local < $end
+        GROUP BY w.week
+        ORDER BY w.week
+        """,
+        {"first": first, "last": week_start(today), "end": today + dt.timedelta(days=1)},
+    ).df()

@@ -111,6 +111,7 @@ Done, continued:
   6. Phone fixes after Topias's checks: the totals wrap two by two instead of one per row; a tapped Vega tooltip never closes on a touch screen, so phones get no tooltips and every chart writes its values on the bars. The phone check of this last version is Topias's.
   7. MCP server added to the engineering backlog (Topias, 2026-10-22).
   8. Recent activities (2026-10-27): `dashboard.recent()` and a table under "This month" with the last 10 activities: date, activity type with its label, distance, timer time, pace or speed, avg HR (Topias asked for it), and training effect label with load. Checked on the real data with counts and order only, on invented rows for the formatting, and the whole page with `AppTest`. Topias looked at it locally: fine. The laptop database was 5 days old (only the server syncs); rebuilt with `src/ingest_api.py`, 552 activities, newest 2026-10-25, same as the server through the MCP. Note added to `docs/server.md`.
+  9. Weekly charts (2026-10-29): `dashboard.weekly()` and a Weekly section at the end of the Stats tab (after training effect, Topias's order): hours and running km for the last 12 Monday weeks, empty weeks as zeros, the current week lighter and marked "so far". Checked on the real data with sums for three dates (today, mid-2025, the first weeks of the history): 12 Mondays each time, and the weeks add up to `totals()` over the same dates. Topias looked at it locally: good.
 - MCP server (2026-10-23, agent, each step approved by Topias): built as its own public repo, [garmin-mcp](https://github.com/topesonen/garmin-mcp), and running on the server as a claude.ai custom connector. Decisions (Topias, 2026-10-23): a separate repo, because garmin-llm shows evaluation of models writing SQL and garmin-mcp shows a capable model with direct access; query rows may go to Anthropic through the MCP (see Privacy); real OAuth from the start, not a secret URL.
   1. Tools: `get_schema` (columns read from DuckDB), `get_notes` (this repo's `docs/schema.md`, read at call time), `run_query` (read-only connection with external access off, row cap, 10 s timeout, DuckDB errors returned to the model). MCP Python SDK 2.3.0, where FastMCP is now `MCPServer`.
   2. Checked over stdio from Claude Code and over Streamable HTTP with the MCP Inspector (Topias), with counts only: 44 columns, 550 activities; writes and file reads refused; the timeout stops a slow query.
@@ -125,7 +126,7 @@ Open:
 
 - M4 done-when (2026-10-22): Topias confirmed from the phone that the synced data shows up.
 
-Next: the weekly volume and running km charts (recent activities checked on the phone by Topias, 2026-10-29).
+Next: Topias checks the weekly charts on the phone; then M2 is done.
 
 ## Why this project
 
@@ -262,7 +263,7 @@ Goal: open the page on the phone and see current stats at once; ask anything els
 |---|---|---|
 | M0. Reframe | This file and `README.md` describe the app; Phase A results kept as "how the model was chosen" | Done 2026-10-16 |
 | M1. Haiku in the live app | Model chosen by config in `src/app.py`, reusing `src/send_anthropic.py`; Haiku default, `qwen2.5-coder:1.5b` for offline tests. Eval rerun on Haiku with the corrected schema wording as the production baseline | Done 2026-10-19 (baseline `b61a9f98`, `2f9bf096`; checked on the real data from the page) |
-| M2. Stats at a glance | Dashboard tab from fixed SQL, no model: this week and month, recent activities, trends, a few charts. Question box as the second tab | In progress: Stats tab with totals, training effect and activity types (`src/dashboard.py`); recent activities table; weekly charts to do |
+| M2. Stats at a glance | Dashboard tab from fixed SQL, no model: this week and month, recent activities, trends, a few charts. Question box as the second tab | In progress: Stats tab with totals, training effect and activity types (`src/dashboard.py`); recent activities table; weekly hours and running km |
 | M3. Always on | Run on the server `ubuntu-4gb-hel1-2` as a systemd service, reachable over Tailscale only. The DuckDB file may live there (Topias, 2026-10-16); copied after each ingest, or ingested there | Done 2026-10-19: systemd service as user `garmin`, HTTPS through `tailscale serve`, database copied after each ingest (`docs/server.md`) |
 | M4. Fresh data | Sync automatically from the Garmin Connect Personal API (Topias, 2026-10-22; unofficial `garminconnect` tried and dropped) | Done 2026-10-22: hourly systemd timer on the server as user `garmin-sync`, the only writer of the database (`docs/server.md`); checked by Topias from the phone |
 | M5. AI engineering depth | One at a time, Topias picks: eval as a pre-release check with a cost cap; charts from questions; multi-query tool use scored on the window and multi-step questions; a log of live questions (no rows) feeding new eval questions; optionally a short answer in words from the result rows (sends rows to the model, needs a privacy decision) | To do |

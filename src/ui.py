@@ -177,10 +177,10 @@ def headroom(top):
     return alt.Scale(domain=[0, max(top, 1) * 1.15])
 
 
-def value_text(base, measure, **mark):
+def value_text(base, measure, fmt=".0f", **mark):
     """Values in text colour, never the series colour."""
     return base.mark_text(color=TEXT[theme()], **mark).encode(
-        text=alt.Text(f"{measure}:Q", format=".0f")
+        text=alt.Text(f"{measure}:Q", format=fmt)
     )
 
 
@@ -250,6 +250,32 @@ def type_chart(df, measure, title):
         ]),
     )
     chart = bars + value_text(base, measure, align="left", baseline="middle", dx=4)
+    st.altair_chart(chart, width="stretch")
+
+
+def week_chart(df, field, title, fmt):
+    """One bar per week in one colour; the current week, still running, in a
+    lighter shade, so a partial week does not read as a drop."""
+    df = df.assign(
+        week=pd.to_datetime(df["week"]),
+        status=["so far" if i == len(df) - 1 else "full" for i in range(len(df))],
+    )
+    base = alt.Chart(df).encode(
+        x=alt.X("week:O", timeUnit="yearmonthdate", title="Week starting",
+                axis=alt.Axis(format="%-d.%-m", labelAngle=0, labelOverlap="parity")),
+        y=alt.Y(f"{field}:Q", title=title, scale=headroom(df[field].max() if len(df) else 0)),
+    )
+    bars = base.mark_bar(color=TYPE_COLOURS[theme()]["running"]).encode(
+        opacity=alt.Opacity(
+            "status:N", scale=alt.Scale(domain=["full", "so far"], range=[1, 0.45]),
+            legend=alt.Legend(title=None, orient="bottom"),
+        ),
+        **tooltips([
+            alt.Tooltip("week:T", title="Week starting", format="%-d %b %Y"),
+            alt.Tooltip(f"{field}:Q", title=title, format=fmt),
+        ]),
+    )
+    chart = bars + value_text(base, field, fmt, baseline="bottom", dy=-2, fontSize=10)
     st.altair_chart(chart, width="stretch")
 
 
@@ -331,6 +357,13 @@ def show_stats(today):
             label_chart(monthly, "month", measure, title)
         else:
             group_months(monthly, detail, measure, title, today)
+
+        st.subheader("Weekly")
+        weekly = dashboard.weekly(con, today)
+        st.markdown("**Hours**")
+        week_chart(weekly, "hours", "Hours", ".1f")
+        st.markdown("**Running km**")
+        week_chart(weekly, "running_km", "Running km", ".0f")
 
 
 def show_ask():
