@@ -39,6 +39,8 @@ ssh root@<server> 'systemctl start garmin-llm-sync && journalctl -u garmin-llm-s
 
 The app opens the database for each query, so a restart is not needed for new data. Copying a database from the laptop is no longer needed; the next sync would replace it anyway.
 
+Only the server syncs. The laptop's `data/warehouse/garmin.duckdb` changes only when `python src/ingest_api.py` is run there by hand, so a local `streamlit run` shows data as of the last such run.
+
 When the Garmin key expires (Garmin emails about a week before), create a new one in Garmin Connect and write it as in step 4 below, to `/etc/garmin-llm-sync.env` with `GARMIN_API_KEY=`. Until then, sync runs fail and the page shows the last synced data.
 
 After a code change is pushed:

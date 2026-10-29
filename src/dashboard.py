@@ -131,3 +131,18 @@ def types_between(con, start, end):
         """,
         {"start": start, "end": end},
     ).df()
+
+
+def recent(con, n=10):
+    """The n latest activities, newest first, with the fields the list shows."""
+    return con.execute(
+        """
+        SELECT start_time_local, activity_type, workout_label, distance_km,
+               timer_time_s, avg_pace_s_per_km, avg_speed_kmh, avg_hr_bpm,
+               training_effect_label, training_load
+        FROM activities
+        ORDER BY start_time_local DESC
+        LIMIT $n
+        """,
+        {"n": n},
+    ).df()

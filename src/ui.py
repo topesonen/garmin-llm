@@ -83,6 +83,44 @@ def show_totals(df, previous=None):
             st.metric(title, fmt.format(row[field]), delta, width=140)
 
 
+def clock(seconds):
+    """52:14 under an hour, 1:05:30 from an hour up."""
+    hours, rest = divmod(round(seconds), 3600)
+    minutes, secs = divmod(rest, 60)
+    return f"{hours}:{minutes:02d}:{secs:02d}" if hours else f"{minutes}:{secs:02d}"
+
+
+def show_recent(df):
+    """One row per activity, formatted for reading; blanks where a field was
+    not recorded. Pace for foot sports, speed for the rest, as the ingest
+    fills only one of them."""
+    def pace_or_speed(row):
+        if pd.notna(row["avg_pace_s_per_km"]):
+            return f"{clock(row['avg_pace_s_per_km'])} /km"
+        if pd.notna(row["avg_speed_kmh"]):
+            return f"{row['avg_speed_kmh']:.1f} km/h"
+        return ""
+
+    def effect(row):
+        label = LABEL_NAMES.get(row["training_effect_label"], "") if pd.notna(row["training_effect_label"]) else ""
+        load = f"{row['training_load']:.0f}" if pd.notna(row["training_load"]) else ""
+        return " · ".join(part for part in (label, load) if part)
+
+    table = pd.DataFrame({
+        "Date": df["start_time_local"].map(lambda t: f"{t:%a} {t.day} {t:%b, %H:%M}"),
+        "Activity": [
+            f"{kind} · {label}" if pd.notna(label) and label else kind
+            for kind, label in zip(df["activity_type"], df["workout_label"])
+        ],
+        "Distance": df["distance_km"].map(lambda v: f"{v:.1f} km" if pd.notna(v) else ""),
+        "Duration": df["timer_time_s"].map(lambda v: clock(v) if pd.notna(v) else ""),
+        "Pace / speed": df.apply(pace_or_speed, axis=1),
+        "Avg HR": df["avg_hr_bpm"].map(lambda v: f"{v:.0f}" if pd.notna(v) else ""),
+        "Training effect": df.apply(effect, axis=1),
+    })
+    st.dataframe(table, hide_index=True)
+
+
 def period_dates(period, today, con):
     """First and last day of the chosen period, both included. None while a
     custom range has only its start date picked."""
@@ -264,6 +302,9 @@ def show_stats(today):
             dashboard.totals(con, last_month, min(last_month + dt.timedelta(days=days), this_month)),
         )
         st.caption(f"Change against the first {days} days of last month.")
+
+        st.subheader("Recent activities")
+        show_recent(dashboard.recent(con))
 
         st.subheader("Breakdown")
         choice = st.segmented_control("Show", list(MEASURES), default="Activities", key="te_measure")
