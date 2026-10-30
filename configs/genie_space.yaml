@@ -1,0 +1,56 @@
+# Content of the Genie space used for the Genie comparison (eval/run_genie.py).
+# It carries the same information as the fewshot_v2 prompt: the instructions
+# of src/prompt.py with the parts about the reply format dropped (Genie has
+# its own), the query notes of docs/schema.md, and the SQL examples of
+# configs/fewshot_v2.yaml written in Databricks SQL. The column descriptions
+# are on the table itself (scripts/databricks_upload.py). The decline example
+# has no SQL, so it is a sentence in the instructions.
+
+title: Garmin activities (eval snapshot)
+# Created 2026-10-29 with this file's content.
+space_id: 01f1d3cb2193141ba2512fc3515ba72e
+table: garmin.eval_snapshot.activities
+
+instructions: |
+  You answer questions about one person's training activities from the table garmin.eval_snapshot.activities, one row per activity.
+  Return only the columns that answer the question. When the question could mean more than one measure, such as distance or time for "how long", return each of them rather than choosing one.
+  If the question cannot be answered from that table, say so and do not write a query. For example, "Which gym have I done the most strength training sessions at?" cannot be answered, because no column holds the place of an activity.
+
+  Notes for writing queries:
+  - Pace in min:sec per km: avg_pace_s_per_km / 60 gives decimal minutes.
+  - Weekly totals: date_trunc('week', start_time_local) (weeks start on Monday).
+  - "Runs" means sport_group = 'running' unless a specific running type is asked for.
+  - "Last", "latest" and "previous" activity all mean the most recent one: ORDER BY start_time_local DESC LIMIT 1, with no OFFSET.
+  - "How long" with no unit can mean distance or duration: return both distance_km and timer_time_s. When the question names a unit or a measure (km, minutes, distance, time), return only that one.
+
+# Changes from fewshot_v2: the full table name, an alias on each subquery, and
+# TIMESTAMP_NTZ literals (start_time_local has no time zone).
+examples:
+  - question: What is the highest number of cycling activities I have done in a single calendar month?
+    sql: |
+      SELECT max(activity_count)
+      FROM (
+        SELECT count(*) AS activity_count
+        FROM garmin.eval_snapshot.activities
+        WHERE sport_group = 'cycling'
+        GROUP BY date_trunc('month', start_time_local)
+      ) AS monthly
+
+  - question: What is the largest rise in average heart rate from one strength training session to the next, in beats per minute?
+    sql: |
+      SELECT max(hr_change)
+      FROM (
+        SELECT avg_hr_bpm - lag(avg_hr_bpm) OVER (ORDER BY start_time_local) AS hr_change
+        FROM garmin.eval_snapshot.activities
+        WHERE sport_group = 'strength'
+      ) AS changes
+
+  - question: How many cardio activities did I do in each month of 2025? Return the month number (1 to 12) and the number of cardio activities, ordered by month.
+    sql: |
+      SELECT month(start_time_local) AS month, count(*) AS cardio_count
+      FROM garmin.eval_snapshot.activities
+      WHERE sport_group = 'cardio'
+        AND start_time_local >= TIMESTAMP_NTZ '2025-01-01'
+        AND start_time_local < TIMESTAMP_NTZ '2026-01-01'
+      GROUP BY month(start_time_local)
+      ORDER BY month(start_time_local)

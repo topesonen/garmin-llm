@@ -1,0 +1,127 @@
+{
+  "config": {
+    "name": "smoke-genie",
+    "started": "2026-10-30T06:43:29+00:00",
+    "finished": "2026-10-30T06:43:29+00:00",
+    "model": "databricks-genie",
+    "model_digest": null,
+    "ollama_version": null,
+    "temperature": null,
+    "seed": null,
+    "system_prompt_sha256": null,
+    "examples_file": "configs/genie_space.yaml",
+    "examples_sha256": "fbaa0b37f57e09673a33286da6895a63a320154ab663146fc1a443c899fa1c31",
+    "retry": false,
+    "retry_prompt_sha256": null,
+    "snapshot_sha256": "cf04b1e90e6c8bfbf9ce9dc0a7a4fdf6fd2fae0e6124b64ce44144245f4bbea2",
+    "questions_sha256": "4a255b4f10fa22cb1aad3903bedf114ba2dcbb725ef4f97cf98e6b645a7fc624",
+    "abs_tolerance": 0.005,
+    "git_commit": "a5ae7bf72c7fc79d174c278ebe76cb82239bb742",
+    "git_uncommitted_changes": true
+  },
+  "complete": false,
+  "missing_questions": [
+    "q002",
+    "q003",
+    "q004",
+    "q005",
+    "q006",
+    "q007",
+    "q008",
+    "q009",
+    "q010",
+    "q011",
+    "q012",
+    "q013",
+    "q014",
+    "q015",
+    "q016",
+    "q017",
+    "q018",
+    "q019",
+    "q020",
+    "q021",
+    "q022",
+    "q023",
+    "q024",
+    "q025",
+    "q026",
+    "q027",
+    "q028",
+    "q029",
+    "q030",
+    "q031",
+    "q032",
+    "q033",
+    "q034"
+  ],
+  "questions": 1,
+  "correct_overall": {
+    "count": 1,
+    "of": 1,
+    "share": 1.0
+  },
+  "execution_accuracy": {
+    "count": 1,
+    "of": 1,
+    "share": 1.0
+  },
+  "valid_sql_rate": {
+    "count": 1,
+    "of": 1,
+    "share": 1.0
+  },
+  "unanswerable_declined": {
+    "count": 0,
+    "of": 0,
+    "share": null
+  },
+  "unanswerable_answered": {
+    "count": 0,
+    "of": 0,
+    "share": null
+  },
+  "answerable_declined": {
+    "count": 0,
+    "of": 1,
+    "share": 0.0
+  },
+  "lenient": {
+    "correct_overall": {
+      "count": 1,
+      "of": 1,
+      "share": 1.0
+    },
+    "execution_accuracy": {
+      "count": 1,
+      "of": 1,
+      "share": 1.0
+    }
+  },
+  "retry": null,
+  "by_category": {
+    "simple": {
+      "count": 1,
+      "of": 1,
+      "share": 1.0
+    }
+  },
+  "verdicts": {
+    "correct": 1
+  },
+  "error_categories": null,
+  "performance": {
+    "ttft_s": null,
+    "latency_s": {
+      "median": 15.52,
+      "min": 15.52,
+      "max": 15.52
+    },
+    "generation_tokens_per_s": null,
+    "prompt_tokens": null,
+    "completion_tokens": null
+  },
+  "per_question": {
+    "q001": "correct"
+  }
+}
