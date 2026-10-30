@@ -134,7 +134,7 @@ Open:
 
 - M4 done-when (2026-10-22): Topias confirmed from the phone that the synced data shows up.
 
-Next: Genie comparison table in `README.md`; Topias decides whether h014 is read. After that Topias picks the next milestone; M5 (AI engineering depth) is the remaining one.
+Next: Topias decides whether h014 is read; then picks the next milestone (M5 remains). After that Topias picks the next milestone; M5 (AI engineering depth) is the remaining one.
 
 ## Why this project
 
@@ -421,3 +421,4 @@ One line describing what was built and measured, with real numbers from `results
 | 2026-10-30 | C | Genie: compute back after the daily limit; examples checked on Databricks; space created; Conversation API works on Free Edition; `eval/run_genie.py` built, tested offline on 15 invented replies, smoke run on q001 correct; warehouse auto-stop cannot be edited on Free Edition, so the script stops it | Full Genie run, main then held-out |
 | 2026-10-30 | C | Genie main set `databricks-genie-5af741e2`: 30 of 34 strict, 31 of 34 lenient, 7 of 7 declined, median 15.6 s (Haiku 31, 34, 7, 2.1 s); failures read: two format, two real errors (q018 date range, q033 pace column) | Held-out run once, then README table |
 | 2026-10-30 | C | Genie held-out `databricks-genie-71c169dd`, run once: 13 of 16 strict and lenient, 2 of 3 declined, median 20.3 s (Haiku `2f9bf096` 14 and 15 of 16). h014 answered by Genie and both Haiku runs | README comparison table; Topias: read h014 or not |
+| 2026-10-30 | C | README: Genie comparison section (setup, table next to qwen and Haiku, failures, what the product adds and takes away), Privacy and Running lines; status table updated (dashboard done, Genie comparison done). Pushed | Topias: h014, next milestone |

@@ -29,7 +29,8 @@ Work in progress. The plan and the session log are in [PROJECT.md](PROJECT.md).
 | The chosen model, `claude-haiku-5-5`, in the live app, with structured output and its eval baseline | Done |
 | Running on an always-on server, over HTTPS within the tailnet | Done |
 | New activities synced hourly from Garmin's official Personal API | Done |
-| A dashboard of fixed stats next to the question box | In progress: totals, training effect, activity types |
+| A dashboard of fixed stats next to the question box | Done |
+| The same questions on Databricks Genie, as a managed comparison | Done |
 | Synthetic data, so others can run it | Not started |
 
 ## How the model was chosen
@@ -184,6 +185,32 @@ An attempt in between, with the new notes but the plain-text reply, scored 29 of
 
 The structured reply about doubles the median latency (2.1 s against 1.03 s for the plain-text attempt), because the interpretation is written before the query. The two runs cost about $0.017 together.
 
+### Databricks Genie on the same questions
+
+[Genie](https://docs.databricks.com/aws/en/genie/) is Databricks' managed text-to-SQL product: the same idea as this project's pipeline, with Databricks choosing the model and writing the prompt. To see where it lands, the frozen eval snapshot was loaded into Unity Catalog on Databricks Free Edition (`garmin.eval_snapshot.activities`), with the column descriptions from [docs/schema.md](docs/schema.md) as table and column comments. The Genie space got the same information as the few-shot prompt: the instructions, the query notes, and the three SQL examples of `configs/fewshot_v2.yaml` written in Databricks SQL ([configs/genie_space.yaml](configs/genie_space.yaml)); the decline example has no SQL, so it is a sentence in the instructions.
+
+[eval/run_genie.py](eval/run_genie.py) asks each question in a new conversation through the Genie Conversation API and scores the rows Genie returns with the same comparison as every other run, against the gold query run locally. A reply with no query counts as a decline. Before the first question the script checks that the live space still matches the config file, and both sets were run once, with no change to the space after either run.
+
+|                                  | qwen 7b, best           | Haiku 5.5, production   | Databricks Genie        |
+| -------------------------------- | ----------------------- | ----------------------- | ----------------------- |
+| Main, correct overall            | 23 of 34                | 31 of 34                | 30 of 34                |
+| Main, execution accuracy         | 17 of 27                | 24 of 27                | 23 of 27                |
+| Main, lenient correct overall    | not scored              | 34 of 34                | 31 of 34                |
+| Main, unanswerable declined      | 6 of 7                  | 7 of 7                  | 7 of 7                  |
+| Main, window and multi-step      | 1 of 5, 2 of 6          | 5 of 5, 6 of 6          | 4 of 5, 4 of 6          |
+| Held-out, correct overall        | 7 of 16                 | 14 of 16                | 13 of 16                |
+| Held-out, execution accuracy     | 6 of 13                 | 12 of 13                | 11 of 13                |
+| Held-out, lenient correct overall | not scored             | 15 of 16                | 13 of 16                |
+| Held-out, unanswerable declined  | 1 of 3                  | 2 of 3                  | 2 of 3                  |
+| Median latency (main, held-out)  | 19.2 s, 28.3 s          | 2.1 s, 2.1 s            | 15.6 s, 20.3 s          |
+| Runs (main, held-out)            | `3ff49b60`, `dc128d9a`  | `b61a9f98`, `2f9bf096`  | `5af741e2`, `71c169dd`  |
+
+Full run names start with `qwen2.5-coder_7b-`, `claude-haiku-5-5-` and `databricks-genie-`. The qwen runs predate the lenient score.
+
+Genie is level with the production pipeline within the noise of a 50-question set, and far ahead of the best local model. Its four main-set failures, read by hand: two are format misses (a right answer with an extra column, and a year returned as a timestamp instead of a number) and two are real errors (a date range that counts one week of the next year, and the rounded pace column used where the question asks for timer time divided by distance, the same slip Haiku made in its first run). Haiku's main-set misses are all extra columns, which is why it scores 34 of 34 under the lenient score and Genie 31. On the held-out set Genie misses two multi-step questions and answers the same unanswerable question that Haiku answers. Those failures are not read, by the held-out rule.
+
+Genie takes 15 to 20 s per question against about 2 s for a direct call to Haiku: it reads the table metadata, plans, runs the query on a SQL warehouse and writes an answer in words. What it adds is the product around the model: conversations with follow-up questions, clarifying questions, charts, Unity Catalog permissions, and feedback for the space owner. What it takes away is control: the model and the prompt are not visible or fixed, so its replies cannot be pinned to a version the way the pipeline's can. This is a comparison of a managed product with a pipeline, not of two models.
+
 ### Why the queries fail
 
 Failures on answerable questions were labelled by hand for five runs, by reading the model's SQL next to the gold SQL:
@@ -271,6 +298,8 @@ python eval/run_eval.py --model qwen2.5-coder:7b --examples configs/fewshot_v2.y
 
 The production model's eval needs `ANTHROPIC_API_KEY` and runs with `python eval/run_eval.py --model claude-haiku-5-5`; add `--questions eval/questions_heldout.yaml` for the held-out set.
 
+The Genie comparison needs `DATABRICKS_HOST` and `DATABRICKS_TOKEN` for a workspace. `python scripts/databricks_upload.py --parquet PATH` loads the snapshot into Unity Catalog; create a space from `configs/genie_space.yaml` (its `space_id` is this workspace's) and run `python eval/run_genie.py`, with `--questions eval/questions_heldout.yaml` for the held-out set. The script stops the SQL warehouse at the end.
+
 The gold queries in `eval/questions.yaml` were verified against my data. On another export they still run, but nobody has checked that their answers are right for it.
 
 ## Privacy
@@ -281,6 +310,7 @@ The gold queries in `eval/questions.yaml` were verified against my data. On anot
 - With a hosted model, in the eval or in the live app, only the prompt goes to the Anthropic API: instructions, schema, examples and the question. The query runs on my own laptop or server, so result rows never reach the model provider. The retry is refused for hosted models, because its message can quote values from the data. Anything else that would send rows or DuckDB error text to the model, such as an answer in words, needs a separate decision first.
 - The page is reachable over Tailscale only, not from the public internet. On the server it listens on localhost and `tailscale serve` (not Funnel) puts it on the tailnet.
 - The same data can also be reached from Claude through [garmin-mcp](https://github.com/topesonen/garmin-mcp), a separate MCP server. There Claude writes and runs its own read-only queries, so result rows do reach Anthropic; that was a separate decision, and it does not change the app.
+- For the Genie comparison, the frozen eval snapshot (not the live data) is stored in my Databricks workspace, and Genie's model sees the table, its comments and the query results. That was a separate decision too.
 
 The rules are in the Privacy section of [PROJECT.md](PROJECT.md).
 
@@ -294,5 +324,6 @@ The rules are in the Privacy section of [PROJECT.md](PROJECT.md).
 - [docs/validation.md](docs/validation.md): manual check of the ingest
 - [eval/questions.yaml](eval/questions.yaml): the evaluation questions and gold SQL
 - [eval/questions_heldout.yaml](eval/questions_heldout.yaml): the held-out questions
+- [configs/genie_space.yaml](configs/genie_space.yaml): the Genie space used for the comparison
 - [results/processed/summaries/](results/processed/summaries/): aggregate metrics per eval run
 - [eval/labels/](eval/labels/): hand-made error labels for the failures of five runs
